@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: lucero-trp-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRATION
+        value: 24h
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_EXPIRATION
+        value: 7d
+      - key: WS_CORS_ORIGIN
+        value: https://lucero-trp-backend.onrender.com
+      - key: CORS_ORIGIN
+        value: https://lucero-trp-backend.onrender.com
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 100
+      - key: LOG_LEVEL
+        value: info

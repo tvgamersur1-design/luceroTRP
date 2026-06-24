@@ -1,0 +1,17 @@
+# Frontend y otros directorios
+frontend-mobile/
+frontend-web/
+docs/
+resources/
+capacitor.config.json
+
+# Backend
+backend/node_modules/
+backend/dist/
+backend/coverage/
+backend/.env
+backend/logs/
+
+# OS
+.DS_Store
+Thumbs.db
