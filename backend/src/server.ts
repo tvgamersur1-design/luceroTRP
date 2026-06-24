@@ -44,7 +44,7 @@ setupWebSocket(io);
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: config.cors.origin }));
+app.use(cors({ origin: true, credentials: true }));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(express.json());
