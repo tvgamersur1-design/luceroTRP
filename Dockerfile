@@ -4,11 +4,13 @@ WORKDIR /app
 
 COPY backend/package*.json ./
 
-RUN npm ci --only=production
+RUN npm ci
 
 COPY backend/ .
 
 RUN npm run build
+
+RUN npm ci --omit=dev
 
 EXPOSE 3000
 
