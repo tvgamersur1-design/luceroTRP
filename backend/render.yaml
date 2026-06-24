@@ -19,9 +19,9 @@ services:
       - key: JWT_REFRESH_EXPIRATION
         value: 7d
       - key: WS_CORS_ORIGIN
-        value: https://lucero-trp-backend.onrender.com
+        value: https://lucerotrpbakecdprivado.onrender.com
       - key: CORS_ORIGIN
-        value: https://lucero-trp-backend.onrender.com
+        value: https://lucerotrpbakecdprivado.onrender.com
       - key: RATE_LIMIT_WINDOW_MS
         value: 60000
       - key: RATE_LIMIT_MAX_REQUESTS
