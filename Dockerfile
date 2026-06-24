@@ -2,11 +2,11 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY backend/package*.json ./
 
 RUN npm ci --only=production
 
-COPY . .
+COPY backend/ .
 
 RUN npm run build
 
