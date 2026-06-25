@@ -54,7 +54,8 @@ setIO(io);
 setupWebSocket(io);
 
 // Middleware
-app.use(helmet({ etag: false }));
+app.disable('etag');
+app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
 app.use(compression());
 app.use(morgan('combined'));
