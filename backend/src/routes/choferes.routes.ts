@@ -16,9 +16,13 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (activo !== undefined) filter.activo = activo === 'true';
     if (rol) filter.rol = rol;
 
-    // Si es admin, solo ve sus usuarios (los que creó)
+    // Si es admin, ve usuarios que el creó + usuarios sin adminId (legacy/seeds)
     if (req.user?.rol === 'admin') {
-      filter.adminId = req.user._id;
+      filter.$or = [
+        { adminId: req.user._id },
+        { adminId: { $exists: false } },
+        { adminId: null },
+      ];
     }
 
     const pageNum = parseInt(page as string);
