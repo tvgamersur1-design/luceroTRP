@@ -94,6 +94,22 @@ const io = new Server(httpServer, {
   allowEIO3: true,
 });
 
+// Socket.IO auth middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    return next(new Error('Autenticación requerida'));
+  }
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, config.jwt.secret);
+    socket.data.user = decoded;
+    next();
+  } catch {
+    next(new Error('Token inválido'));
+  }
+});
+
 // WebSocket handlers
 setIO(io);
 setupWebSocket(io);

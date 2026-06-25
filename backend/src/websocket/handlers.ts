@@ -16,10 +16,17 @@ interface LocationData {
 
 export function setupWebSocket(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    logger.info(`Cliente WebSocket conectado: ${socket.id} (transport: ${socket.conn.transport.name})`);
+    const user = socket.data.user;
+    const userInfo = user ? `${user.email} (${user.rol})` : 'sin auth';
+    logger.info(`Cliente WebSocket conectado: ${socket.id} (transport: ${socket.conn.transport.name}, user: ${userInfo})`);
 
     socket.conn.on('upgrade', (transport: any) => {
       logger.info(`Socket ${socket.id} upgraded to ${transport.name}`);
+    });
+
+    socket.on('join:admin', () => {
+      socket.join('admins');
+      logger.info(`Socket ${socket.id} se unió a sala 'admins'`);
     });
 
     socket.on('chofer:location', async (data: LocationData) => {
