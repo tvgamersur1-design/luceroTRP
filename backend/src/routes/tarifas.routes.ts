@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Fare } from '../models/Fare';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -71,6 +72,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
 
     const tarifaPopulada = await Fare.findById(tarifa._id).populate('rutaId', 'nombre origen destino');
 
+    getIO().emit('fare:created', tarifaPopulada);
     res.status(201).json(tarifaPopulada);
   } catch (error) {
     if (error instanceof AppError) {
@@ -92,6 +94,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!tarifa) {
       throw new AppError('Tarifa no encontrada', 404);
     }
+    getIO().emit('fare:updated', tarifa);
     res.json(tarifa);
   } catch (error) {
     if (error instanceof AppError) {
@@ -112,6 +115,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!tarifa) {
       throw new AppError('Tarifa no encontrada', 404);
     }
+    getIO().emit('fare:deleted', req.params.id);
     res.json({ message: 'Tarifa desactivada exitosamente', tarifa });
   } catch (error) {
     if (error instanceof AppError) {

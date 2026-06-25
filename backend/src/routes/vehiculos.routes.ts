@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Vehicle } from '../models/Vehicle';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -68,6 +69,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       activo: true,
     });
 
+    getIO().emit('vehicle:created', vehiculo);
     res.status(201).json(vehiculo);
   } catch (error) {
     if (error instanceof AppError) {
@@ -88,6 +90,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!vehiculo) {
       throw new AppError('Vehículo no encontrado', 404);
     }
+    getIO().emit('vehicle:updated', vehiculo);
     res.json(vehiculo);
   } catch (error) {
     if (error instanceof AppError) {
@@ -108,6 +111,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!vehiculo) {
       throw new AppError('Vehículo no encontrado', 404);
     }
+    getIO().emit('vehicle:deleted', req.params.id);
     res.json({ message: 'Vehículo desactivado exitosamente', vehiculo });
   } catch (error) {
     if (error instanceof AppError) {

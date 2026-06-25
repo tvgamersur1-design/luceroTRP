@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Route } from '../models/Route';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -64,6 +65,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       activa: true,
     });
 
+    getIO().emit('route:created', ruta);
     res.status(201).json(ruta);
   } catch (error) {
     if (error instanceof AppError) {
@@ -84,6 +86,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!ruta) {
       throw new AppError('Ruta no encontrada', 404);
     }
+    getIO().emit('route:updated', ruta);
     res.json(ruta);
   } catch (error) {
     if (error instanceof AppError) {
@@ -104,6 +107,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!ruta) {
       throw new AppError('Ruta no encontrada', 404);
     }
+    getIO().emit('route:deleted', req.params.id);
     res.json({ message: 'Ruta desactivada exitosamente', ruta });
   } catch (error) {
     if (error instanceof AppError) {

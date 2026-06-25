@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Horario } from '../models/Horario';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -35,6 +36,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       adminId: req.user?._id || null,
     });
 
+    getIO().emit('horario:created', horario);
     res.status(201).json(horario);
   } catch (error) {
     if (error instanceof AppError) {
@@ -55,6 +57,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!horario) {
       throw new AppError('Horario no encontrado', 404);
     }
+    getIO().emit('horario:updated', horario);
     res.json(horario);
   } catch (error) {
     if (error instanceof AppError) {
@@ -71,6 +74,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!horario) {
       throw new AppError('Horario no encontrado', 404);
     }
+    getIO().emit('horario:deleted', req.params.id);
     res.json({ message: 'Horario eliminado exitosamente' });
   } catch (error) {
     if (error instanceof AppError) {

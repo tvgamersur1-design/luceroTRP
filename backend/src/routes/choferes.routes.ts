@@ -4,6 +4,7 @@ import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { User } from '../models/User';
 import { Driver } from '../models/Driver';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -130,6 +131,8 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       });
     }
 
+    getIO().emit('driver:created', { _id: user._id, email: user.email, nombre: user.nombre, rol: user.rol });
+
     res.status(201).json({
       _id: user._id,
       email: user.email,
@@ -188,6 +191,8 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       }
     }
 
+    getIO().emit('driver:updated', { _id: usuario._id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol });
+
     res.json({
       _id: usuario._id,
       email: usuario.email,
@@ -223,6 +228,8 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
         { $set: { activo: false } }
       );
     }
+
+    getIO().emit('driver:deleted', req.params.id);
 
     res.json({ message: 'Usuario desactivado exitosamente', usuario });
   } catch (error) {

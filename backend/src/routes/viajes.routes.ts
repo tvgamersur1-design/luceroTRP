@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Trip } from '../models/Trip';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -84,6 +85,8 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       .populate('vehiculoId', 'placa marca modelo')
       .populate('choferId', 'nombre');
 
+    getIO().emit('trip:created', viajePopulado);
+
     res.status(201).json(viajePopulado);
   } catch (error) {
     if (error instanceof AppError) {
@@ -109,6 +112,8 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       throw new AppError('Viaje no encontrado', 404);
     }
 
+    getIO().emit('trip:updated', viaje);
+
     res.json(viaje);
   } catch (error) {
     if (error instanceof AppError) {
@@ -130,6 +135,8 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!viaje) {
       throw new AppError('Viaje no encontrado', 404);
     }
+
+    getIO().emit('trip:deleted', req.params.id);
 
     res.json({ message: 'Viaje cancelado exitosamente', viaje });
   } catch (error) {
@@ -156,6 +163,8 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
       throw new AppError('Viaje no encontrado', 404);
     }
 
+    getIO().emit('trip:updated', viaje);
+
     res.json({ message: 'Viaje iniciado', viaje });
   } catch (error) {
     if (error instanceof AppError) {
@@ -180,6 +189,8 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
     if (!viaje) {
       throw new AppError('Viaje no encontrado', 404);
     }
+
+    getIO().emit('trip:updated', viaje);
 
     res.json({ message: 'Viaje completado', viaje });
   } catch (error) {

@@ -27,6 +27,7 @@ import { pasajerosRoutes } from './routes/pasajeros.routes';
 import { locationRoutes } from './routes/location.routes';
 import { horariosRoutes } from './routes/horarios.routes';
 import { setupWebSocket } from './websocket/handlers';
+import { setIO } from './websocket/socket';
 
 const app = express();
 const httpServer = createServer(app);
@@ -40,6 +41,7 @@ const io = new Server(httpServer, {
 });
 
 // WebSocket handlers
+setIO(io);
 setupWebSocket(io);
 
 // Middleware
