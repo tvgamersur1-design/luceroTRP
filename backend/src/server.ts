@@ -30,6 +30,10 @@ import { setupWebSocket } from './websocket/handlers';
 import { setIO } from './websocket/socket';
 
 const app = express();
+
+// Trust proxy (needed behind Render's reverse proxy)
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 // Socket.IO
@@ -38,8 +42,10 @@ const io = new Server(httpServer, {
     origin: true,
     methods: ['GET', 'POST'],
   },
+  transports: ['polling', 'websocket'],
   pingInterval: 25000,
   pingTimeout: 60000,
+  allowEIO3: true,
 });
 
 // WebSocket handlers
