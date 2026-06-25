@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -6,6 +6,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import bcrypt from 'bcryptjs';
 
 import { config } from './config';
 import { connectDatabase } from './database/connect';
@@ -28,11 +29,55 @@ import { locationRoutes } from './routes/location.routes';
 import { horariosRoutes } from './routes/horarios.routes';
 import { setupWebSocket } from './websocket/handlers';
 import { setIO } from './websocket/socket';
+import { User } from './models/User';
 
 const app = express();
 
 // Trust proxy (needed behind Render's reverse proxy)
 app.set('trust proxy', 1);
+
+// Express 4 async error wrapper
+const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+
+// Seed admin users if they don't exist
+const seedAdminUsers = async () => {
+  try {
+    const existingAdmin = await User.findOne({ email: 'admin@lucero.com' });
+    if (!existingAdmin) {
+      const hashedPassword = await bcrypt.hash('admin123', 10);
+      await User.create({
+        email: 'admin@lucero.com',
+        password: hashedPassword,
+        nombre: 'Admin Lucero',
+        rol: 'admin',
+        activo: true,
+      });
+      logger.info('Usuario admin creado: admin@lucero.com / admin123');
+    } else {
+      logger.info('Usuario admin ya existe');
+    }
+
+    const existingSuper = await User.findOne({ email: 'super@lucero.com' });
+    if (!existingSuper) {
+      const hashedPassword = await bcrypt.hash('super123', 10);
+      await User.create({
+        email: 'super@lucero.com',
+        password: hashedPassword,
+        nombre: 'Super Admin',
+        rol: 'super-admin',
+        activo: true,
+      });
+      logger.info('Usuario super-admin creado: super@lucero.com / super123');
+    } else {
+      logger.info('Usuario super-admin ya existe');
+    }
+  } catch (error) {
+    logger.error('Error en seed de usuarios:', error);
+  }
+};
 
 const httpServer = createServer(app);
 
@@ -104,6 +149,28 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug: test MongoDB connection
+app.get('/api/debug/db', async (req, res) => {
+  try {
+    const mongoose = await import('mongoose');
+    const state = mongoose.default.connection.readyState;
+    const stateMap: Record<number, string> = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting',
+    };
+    const userCount = await User.countDocuments();
+    res.json({
+      connectionState: stateMap[state] || 'unknown',
+      userCount,
+      mongoUri: config.mongodb.uri ? 'set' : 'NOT SET',
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message, stack: error.stack });
+  }
+});
+
 // Error handler
 app.use(errorHandler);
 
@@ -111,6 +178,9 @@ app.use(errorHandler);
 const startServer = async () => {
   try {
     await connectDatabase();
+
+    // Seed admin users on startup
+    await seedAdminUsers();
 
     httpServer.listen(config.port, () => {
       logger.info(`Servidor corriendo en http://${config.host}:${config.port}`);

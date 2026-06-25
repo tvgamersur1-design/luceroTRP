@@ -60,6 +60,7 @@ router.post('/login', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
+    console.error('[LOGIN ERROR]', error);
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ message: error.message });
     }
