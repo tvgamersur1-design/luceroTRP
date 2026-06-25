@@ -35,9 +35,11 @@ const httpServer = createServer(app);
 // Socket.IO
 const io = new Server(httpServer, {
   cors: {
-    origin: config.websocket.corsOrigin,
+    origin: true,
     methods: ['GET', 'POST'],
   },
+  pingInterval: 25000,
+  pingTimeout: 60000,
 });
 
 // WebSocket handlers

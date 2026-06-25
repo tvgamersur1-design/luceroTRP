@@ -16,7 +16,11 @@ interface LocationData {
 
 export function setupWebSocket(io: Server): void {
   io.on('connection', (socket: Socket) => {
-    logger.info(`Cliente WebSocket conectado: ${socket.id}`);
+    logger.info(`Cliente WebSocket conectado: ${socket.id} (transport: ${socket.conn.transport.name})`);
+
+    socket.conn.on('upgrade', (transport: any) => {
+      logger.info(`Socket ${socket.id} upgraded to ${transport.name}`);
+    });
 
     socket.on('chofer:location', async (data: LocationData) => {
       try {
@@ -87,8 +91,8 @@ export function setupWebSocket(io: Server): void {
       }
     });
 
-    socket.on('disconnect', () => {
-      logger.info(`Cliente WebSocket desconectado: ${socket.id}`);
+    socket.on('disconnect', (reason) => {
+      logger.info(`Cliente WebSocket desconectado: ${socket.id} razon: ${reason}`);
     });
   });
 }
