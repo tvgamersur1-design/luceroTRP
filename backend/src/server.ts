@@ -54,12 +54,20 @@ setIO(io);
 setupWebSocket(io);
 
 // Middleware
-app.use(helmet());
+app.use(helmet({ etag: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Disable 304 caching for API responses
+app.use('/api', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
