@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Trip } from '../models/Trip';
+import { Driver } from '../models/Driver';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../websocket/socket';
 
@@ -66,6 +67,11 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
 
     if (!rutaId || !vehiculoId || !choferId || !fechaInicio) {
       throw new AppError('rutaId, vehiculoId, choferId y fechaInicio son requeridos', 400);
+    }
+
+    const driverExists = await Driver.findById(choferId);
+    if (!driverExists) {
+      throw new AppError('El chofer seleccionado no existe en la base de datos de conductores', 400);
     }
 
     const viaje = await Trip.create({
