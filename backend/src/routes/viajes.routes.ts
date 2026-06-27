@@ -111,7 +111,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       Trip.find(filter)
         .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
         .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
-        .populate('choferId', 'nombre licencia telefono')
+        .populate('choferId', 'nombre licencia telefono userId')
         .populate('pasajeros.pasajeroId', 'nombre dni telefono')
         .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo')
         .sort({ fechaInicio: -1 })
@@ -132,7 +132,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const viaje = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
       .populate('vehiculoId', 'placa marca modelo capacidad color configuracionAsientos')
-      .populate('choferId', 'nombre licencia telefono')
+      .populate('choferId', 'nombre licencia telefono userId')
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
@@ -338,7 +338,7 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     )
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
       .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
-      .populate('choferId', 'nombre licencia telefono')
+      .populate('choferId', 'nombre licencia telefono userId')
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
@@ -383,7 +383,7 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
       .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
-      .populate('choferId', 'nombre licencia telefono')
+      .populate('choferId', 'nombre licencia telefono userId')
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
@@ -424,7 +424,7 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
       .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
-      .populate('choferId', 'nombre licencia telefono')
+      .populate('choferId', 'nombre licencia telefono userId')
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
@@ -468,7 +468,7 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
       .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
-      .populate('choferId', 'nombre licencia telefono')
+      .populate('choferId', 'nombre licencia telefono userId')
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
