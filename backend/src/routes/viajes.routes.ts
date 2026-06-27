@@ -7,6 +7,23 @@ import { getIO } from '../websocket/socket';
 
 const router = Router();
 
+async function canModifyTrip(req: AuthRequest, viajeId: string): Promise<boolean> {
+  if (req.user?.rol === 'super-admin' || req.user?.rol === 'admin') return true;
+
+  const viaje = await Trip.findById(viajeId).select('choferId ayudantes');
+  if (!viaje) return false;
+
+  const userId = req.user?._id;
+  const driver = await Driver.findOne({ userId });
+  const driverId = driver?._id?.toString();
+
+  if (viaje.choferId?.toString() === userId || viaje.choferId?.toString() === driverId) return true;
+
+  return viaje.ayudantes?.some(a =>
+    a.choferId?.toString() === userId || a.choferId?.toString() === driverId
+  ) || false;
+}
+
 // GET /api/viajes/debug-chofer - Diagnóstico: ver qué ve el chofer
 router.get('/debug-chofer', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -50,15 +67,40 @@ router.get('/debug-chofer', authenticate, async (req: AuthRequest, res: Response
 // GET /api/viajes - Listar viajes
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { estado, fecha, choferId, page = '1', limit = '20' } = req.query;
+    const { estado, fecha, choferId, page = '1', limit = '50' } = req.query;
     const filter: Record<string, unknown> = {};
 
-    if (estado) filter.estado = estado;
     if (fecha) filter.fechaInicio = { $gte: new Date(fecha as string) };
+
     if (choferId) {
       const driver = await Driver.findOne({ userId: choferId });
-      const driverIds = driver ? [driver._id.toString(), choferId] : [choferId];
-      filter.choferId = { $in: driverIds };
+      const driverIdStr = driver ? driver._id.toString() : null;
+
+      if (estado) {
+        if (estado === 'planificado') {
+          filter.estado = 'planificado';
+        } else if (estado === 'en_transito') {
+          const ids = driverIdStr ? [driverIdStr, choferId] : [choferId];
+          filter.$and = [
+            { estado: 'en_transito' },
+            { choferId: { $in: ids } },
+          ];
+        } else {
+          const ids = driverIdStr ? [driverIdStr, choferId] : [choferId];
+          filter.$and = [
+            { estado },
+            { choferId: { $in: ids } },
+          ];
+        }
+      } else {
+        const ids = driverIdStr ? [driverIdStr, choferId] : [choferId];
+        filter.$or = [
+          { estado: 'planificado' },
+          { $and: [{ estado: 'en_transito' }, { choferId: { $in: ids } }] },
+        ];
+      }
+    } else {
+      if (estado) filter.estado = estado;
     }
 
     const pageNum = parseInt(page as string);
@@ -203,6 +245,10 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
 // PUT /api/viajes/:id/iniciar - Iniciar viaje
 router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para iniciar este viaje', 403);
+    }
+
     const viaje = await Trip.findByIdAndUpdate(
       req.params.id,
       { $set: { estado: 'en_transito', fechaInicio: new Date() } },
@@ -230,6 +276,10 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
 // PUT /api/viajes/:id/completar - Completar viaje
 router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para completar este viaje', 403);
+    }
+
     const viaje = await Trip.findByIdAndUpdate(
       req.params.id,
       { $set: { estado: 'completado', fechaFin: new Date() } },
@@ -257,6 +307,10 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
 // POST /api/viajes/:id/pasajeros - Agregar pasajero al viaje
 router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para agregar pasajeros a este viaje', 403);
+    }
+
     const { pasajeroId, montoPagado, metodoPago, asientos, estado, destino, tarifaId } = req.body;
 
     if (!pasajeroId || !montoPagado || !metodoPago) {
@@ -306,6 +360,10 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
 // PUT /api/viajes/:id/pasajeros/:pid/asiento - Asignar/cambiar asiento(s)
 router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para modificar asientos en este viaje', 403);
+    }
+
     const { asientos } = req.body;
 
     if (!asientos || !Array.isArray(asientos)) {
@@ -343,8 +401,12 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
 // PUT /api/viajes/:id/pasajeros/:pid/estado - Cambiar estado del pasajero
 router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para cambiar estados en este viaje', 403);
+    }
+
     const { estado } = req.body;
-    const validStates = ['reservado', 'en_terminal', 'abordado', 'bajado'];
+    const validStates = ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado'];
 
     if (!estado || !validStates.includes(estado)) {
       throw new AppError(`Estado inválido. Válidos: ${validStates.join(', ')}`, 400);
@@ -380,6 +442,10 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
 // POST /api/viajes/:id/pasajeros/:pid/bajar - Registrar bajada del pasajero
 router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para registrar bajadas en este viaje', 403);
+    }
+
     const { paradaBajada, montoCobrado } = req.body;
 
     const viaje = await Trip.findById(req.params.id);

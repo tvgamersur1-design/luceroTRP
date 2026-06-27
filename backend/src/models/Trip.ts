@@ -18,7 +18,7 @@ export interface ITrip extends Document {
     metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta';
     timestamp: Date;
     asientos?: number[];
-    estado: 'reservado' | 'en_terminal' | 'abordado' | 'bajado';
+    estado: 'reservado' | 'en_terminal' | 'abordado' | 'no_llegado' | 'bajado';
     destino?: string;
     tarifaId?: mongoose.Types.ObjectId;
     paradaBajada?: string;
@@ -59,7 +59,7 @@ const TripSchema = new Schema<ITrip>(
         metodoPago: { type: String, enum: ['efectivo', 'yape', 'plin', 'tarjeta'], required: true },
         timestamp: { type: Date, default: Date.now },
         asientos: [{ type: Number }],
-        estado: { type: String, enum: ['reservado', 'en_terminal', 'abordado', 'bajado'], default: 'abordado' },
+        estado: { type: String, enum: ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado'], default: 'reservado' },
         destino: { type: String },
         tarifaId: { type: Schema.Types.ObjectId, ref: 'Fare' },
         paradaBajada: { type: String },
