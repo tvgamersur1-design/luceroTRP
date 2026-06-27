@@ -7,6 +7,46 @@ import { getIO } from '../websocket/socket';
 
 const router = Router();
 
+// GET /api/viajes/debug-chofer - Diagnóstico: ver qué ve el chofer
+router.get('/debug-chofer', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?._id;
+    const rol = req.user?.rol;
+
+    const driver = await Driver.findOne({ userId });
+
+    const filter: Record<string, unknown> = {};
+    if (driver) {
+      filter.choferId = { $in: [driver._id.toString(), userId] };
+    } else {
+      filter.choferId = userId;
+    }
+
+    const viajes = await Trip.find(filter)
+      .populate('rutaId', 'nombre origen destino')
+      .populate('vehiculoId', 'placa')
+      .select('estado fechaInicio horaSalida choferId')
+      .sort({ fechaInicio: -1 });
+
+    res.json({
+      userId,
+      rol,
+      driverFound: !!driver,
+      driverId: driver?._id || null,
+      viajesCount: viajes.length,
+      viajes: viajes.map(v => ({
+        _id: v._id,
+        estado: v.estado,
+        fechaInicio: v.fechaInicio,
+        horaSalida: v.horaSalida,
+        choferId: v.choferId,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error en diagnóstico', error: String(error) });
+  }
+});
+
 // GET /api/viajes - Listar viajes
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -17,11 +57,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (fecha) filter.fechaInicio = { $gte: new Date(fecha as string) };
     if (choferId) {
       const driver = await Driver.findOne({ userId: choferId });
-      if (driver) {
-        filter.choferId = driver._id;
-      } else {
-        filter.choferId = choferId;
-      }
+      const driverIds = driver ? [driver._id.toString(), choferId] : [choferId];
+      filter.choferId = { $in: driverIds };
     }
 
     const pageNum = parseInt(page as string);
