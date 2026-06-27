@@ -15,7 +15,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     if (estado) filter.estado = estado;
     if (fecha) filter.fechaInicio = { $gte: new Date(fecha as string) };
-    if (choferId) filter.choferId = choferId;
+    if (choferId) {
+      const driver = await Driver.findOne({ userId: choferId });
+      if (driver) {
+        filter.choferId = driver._id;
+      } else {
+        filter.choferId = choferId;
+      }
+    }
 
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
