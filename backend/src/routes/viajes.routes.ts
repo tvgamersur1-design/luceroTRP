@@ -23,9 +23,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     const [viajes, total] = await Promise.all([
       Trip.find(filter)
-        .populate('rutaId', 'nombre origen destino')
-        .populate('vehiculoId', 'placa marca modelo')
-        .populate('choferId', 'nombre')
+        .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+        .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+        .populate('choferId', 'nombre licencia telefono')
+        .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+        .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo')
         .sort({ fechaInicio: -1 })
         .skip(skip)
         .limit(limitNum),
@@ -42,10 +44,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const viaje = await Trip.findById(req.params.id)
-      .populate('rutaId', 'nombre origen destino paradas distanciaKm')
-      .populate('vehiculoId', 'placa marca modelo capacidad color')
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad color configuracionAsientos')
       .populate('choferId', 'nombre licencia telefono')
-      .populate('pasajeros.pasajeroId', 'nombre dni telefono');
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     if (!viaje) {
       throw new AppError('Viaje no encontrado', 404);
@@ -210,7 +213,7 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
 // POST /api/viajes/:id/pasajeros - Agregar pasajero al viaje
 router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
   try {
-    const { pasajeroId, montoPagado, metodoPago } = req.body;
+    const { pasajeroId, montoPagado, metodoPago, asientos, estado, destino, tarifaId } = req.body;
 
     if (!pasajeroId || !montoPagado || !metodoPago) {
       throw new AppError('pasajeroId, montoPagado y metodoPago son requeridos', 400);
@@ -225,16 +228,27 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
             montoPagado,
             metodoPago,
             timestamp: new Date(),
+            asientos: asientos || [],
+            estado: estado || 'abordado',
+            destino: destino || '',
+            tarifaId: tarifaId || undefined,
           },
         },
         $inc: { ingresoTotal: montoPagado },
       },
       { new: true, runValidators: true }
-    );
+    )
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+      .populate('choferId', 'nombre licencia telefono')
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     if (!viaje) {
       throw new AppError('Viaje no encontrado', 404);
     }
+
+    getIO().emit('trip:updated', viaje);
 
     res.json({ message: 'Pasajero agregado al viaje', viaje });
   } catch (error) {
@@ -242,6 +256,120 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
       return res.status(error.statusCode).json({ message: error.message });
     }
     res.status(500).json({ message: 'Error al agregar pasajero' });
+  }
+});
+
+// PUT /api/viajes/:id/pasajeros/:pid/asiento - Asignar/cambiar asiento(s)
+router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { asientos } = req.body;
+
+    if (!asientos || !Array.isArray(asientos)) {
+      throw new AppError('asientos debe ser un array de números', 400);
+    }
+
+    const viaje = await Trip.findById(req.params.id);
+    if (!viaje) throw new AppError('Viaje no encontrado', 404);
+
+    const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
+    if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    pasajero.asientos = asientos;
+    pasajero.estado = 'abordado';
+    await viaje.save();
+
+    const viajePopulado = await Trip.findById(req.params.id)
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+      .populate('choferId', 'nombre licencia telefono')
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
+
+    getIO().emit('trip:updated', viajePopulado);
+
+    res.json({ message: 'Asiento(s) asignado(s)', viaje: viajePopulado });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error al asignar asiento' });
+  }
+});
+
+// PUT /api/viajes/:id/pasajeros/:pid/estado - Cambiar estado del pasajero
+router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { estado } = req.body;
+    const validStates = ['reservado', 'en_terminal', 'abordado', 'bajado'];
+
+    if (!estado || !validStates.includes(estado)) {
+      throw new AppError(`Estado inválido. Válidos: ${validStates.join(', ')}`, 400);
+    }
+
+    const viaje = await Trip.findById(req.params.id);
+    if (!viaje) throw new AppError('Viaje no encontrado', 404);
+
+    const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
+    if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    pasajero.estado = estado;
+    await viaje.save();
+
+    const viajePopulado = await Trip.findById(req.params.id)
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+      .populate('choferId', 'nombre licencia telefono')
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
+
+    getIO().emit('trip:updated', viajePopulado);
+
+    res.json({ message: 'Estado actualizado', viaje: viajePopulado });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error al cambiar estado' });
+  }
+});
+
+// POST /api/viajes/:id/pasajeros/:pid/bajar - Registrar bajada del pasajero
+router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { paradaBajada, montoCobrado } = req.body;
+
+    const viaje = await Trip.findById(req.params.id);
+    if (!viaje) throw new AppError('Viaje no encontrado', 404);
+
+    const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
+    if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    pasajero.estado = 'bajado';
+    pasajero.paradaBajada = paradaBajada || pasajero.destino || '';
+    pasajero.fechaBajada = new Date();
+
+    if (montoCobrado !== undefined && montoCobrado !== pasajero.montoPagado) {
+      viaje.ingresoTotal = viaje.ingresoTotal - pasajero.montoPagado + montoCobrado;
+      pasajero.montoPagado = montoCobrado;
+    }
+
+    await viaje.save();
+
+    const viajePopulado = await Trip.findById(req.params.id)
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+      .populate('choferId', 'nombre licencia telefono')
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
+
+    getIO().emit('trip:updated', viajePopulado);
+
+    res.json({ message: 'Bajada registrada', viaje: viajePopulado });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error al registrar bajada' });
   }
 });
 
