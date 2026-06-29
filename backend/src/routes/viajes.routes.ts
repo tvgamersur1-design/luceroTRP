@@ -313,17 +313,23 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
 
     const { pasajeroId, montoPagado, metodoPago, asientos, estado, destino, tarifaId } = req.body;
 
-    if (!pasajeroId || !montoPagado || !metodoPago) {
-      throw new AppError('pasajeroId, montoPagado y metodoPago son requeridos', 400);
+    if (!metodoPago) {
+      throw new AppError('metodoPago es requerido', 400);
     }
+
+    if (montoPagado === undefined || montoPagado === null || isNaN(Number(montoPagado))) {
+      throw new AppError('montoPagado debe ser un número válido', 400);
+    }
+
+    const montoNum = Number(montoPagado) || 0;
 
     const viaje = await Trip.findByIdAndUpdate(
       req.params.id,
       {
         $push: {
           pasajeros: {
-            pasajeroId,
-            montoPagado,
+            pasajeroId: pasajeroId || undefined,
+            montoPagado: montoNum,
             metodoPago,
             timestamp: new Date(),
             asientos: asientos || [],
@@ -332,7 +338,7 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
             tarifaId: tarifaId || undefined,
           },
         },
-        $inc: { ingresoTotal: montoPagado },
+        $inc: { ingresoTotal: montoNum },
       },
       { new: true, runValidators: true }
     )
@@ -406,7 +412,7 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
     }
 
     const { estado } = req.body;
-    const validStates = ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado'];
+    const validStates = ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado', 'en_camino'];
 
     if (!estado || !validStates.includes(estado)) {
       throw new AppError(`Estado inválido. Válidos: ${validStates.join(', ')}`, 400);

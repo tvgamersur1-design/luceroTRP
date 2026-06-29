@@ -56,10 +56,10 @@ const TripSchema = new Schema<ITrip>(
       {
         pasajeroId: { type: Schema.Types.ObjectId, ref: 'Passenger', required: true },
         montoPagado: { type: Number, required: true, min: 0 },
-        metodoPago: { type: String, enum: ['efectivo', 'yape', 'plin', 'tarjeta'], required: true },
+        metodoPago: { type: String, enum: ['efectivo', 'yape', 'plin', 'tarjeta', 'pendiente'], required: true },
         timestamp: { type: Date, default: Date.now },
         asientos: [{ type: Number }],
-        estado: { type: String, enum: ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado'], default: 'reservado' },
+        estado: { type: String, enum: ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado', 'en_camino'], default: 'reservado' },
         destino: { type: String },
         tarifaId: { type: Schema.Types.ObjectId, ref: 'Fare' },
         paradaBajada: { type: String },
