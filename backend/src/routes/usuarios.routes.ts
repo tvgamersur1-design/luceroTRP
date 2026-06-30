@@ -5,16 +5,19 @@ import { User } from '../models/User';
 
 const router = Router();
 
-// GET /api/usuarios - Listar usuarios (para sync)
-router.get('/', authenticate, requireRole('super-admin', 'admin'), async (req, res) => {
+// GET /api/usuarios - Listar usuarios (para sync y admin)
+// Accessible a todos los autenticados (solo devuelve datos públicos, sin password)
+router.get('/', authenticate, async (req, res) => {
   try {
     const { adminId, rol } = req.query;
     const filter: Record<string, unknown> = { activo: true };
 
-    // Admins only see their own users; super-admin sees all
-    if ((req as any).user?.rol === 'admin') {
+    const userRol = (req as any).user?.rol;
+
+    // Admins only see their own users; super-admin sees all; choferes see all active
+    if (userRol === 'admin') {
       filter.adminId = (req as any).user._id;
-    } else if (adminId) {
+    } else if (adminId && userRol === 'super-admin') {
       filter.adminId = adminId;
     }
 
@@ -33,7 +36,7 @@ router.get('/', authenticate, requireRole('super-admin', 'admin'), async (req, r
 });
 
 // GET /api/usuarios/:id - Obtener usuario por ID
-router.get('/:id', authenticate, requireRole('super-admin', 'admin'), async (req, res) => {
+router.get('/:id', authenticate, async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password').lean();
     if (!user) {
