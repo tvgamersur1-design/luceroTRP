@@ -17,12 +17,19 @@ const router = Router();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const SYNCABLE_MODELS: Record<string, { model: mongoose.Model<any>; name: string }> = {
   trips: { model: Trip, name: 'Trip' },
+  viajes: { model: Trip, name: 'Trip' },
   passengers: { model: Passenger, name: 'Passenger' },
+  pasajeros: { model: Passenger, name: 'Passenger' },
   payments: { model: Payment, name: 'Payment' },
+  pagos: { model: Payment, name: 'Payment' },
   routes: { model: Route, name: 'Route' },
+  rutas: { model: Route, name: 'Route' },
   fares: { model: Fare, name: 'Fare' },
+  tarifas: { model: Fare, name: 'Fare' },
   drivers: { model: Driver, name: 'Driver' },
+  choferes: { model: Driver, name: 'Driver' },
   vehicles: { model: Vehicle, name: 'Vehicle' },
+  vehiculos: { model: Vehicle, name: 'Vehicle' },
 };
 
 // POST /api/sync/pending - Obtener cambios desde un timestamp
