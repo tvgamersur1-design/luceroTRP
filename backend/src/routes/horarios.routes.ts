@@ -70,17 +70,21 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
 // DELETE /api/horarios/:id - Eliminar horario
 router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const horario = await Horario.findByIdAndDelete(req.params.id);
+    const horario = await Horario.findByIdAndUpdate(
+      req.params.id,
+      { $set: { activo: false } },
+      { new: true }
+    );
     if (!horario) {
       throw new AppError('Horario no encontrado', 404);
     }
     getIO().emit('horario:deleted', req.params.id);
-    res.json({ message: 'Horario eliminado exitosamente' });
+    res.json({ message: 'Horario desactivado exitosamente' });
   } catch (error) {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ message: error.message });
     }
-    res.status(500).json({ message: 'Error al eliminar horario' });
+    res.status(500).json({ message: 'Error al desactivar horario' });
   }
 });
 

@@ -148,7 +148,22 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
             break;
           case 'delete':
             if (!isLocalId) {
-              await modelEntry.model.findByIdAndDelete(registroId);
+              // Soft delete: match direct DELETE endpoint behavior per model
+              const tablaKey = tabla.toLowerCase();
+              if (['routes', 'rutas', 'fares', 'tarifas'].includes(tablaKey)) {
+                await modelEntry.model.findByIdAndUpdate(registroId, { $set: { activa: false, updatedAt: new Date() } });
+              } else if (['vehicles', 'vehiculos', 'drivers', 'choferes'].includes(tablaKey)) {
+                await modelEntry.model.findByIdAndUpdate(registroId, { $set: { activo: false, updatedAt: new Date() } });
+              } else if (['usuarios', 'users'].includes(tablaKey)) {
+                await modelEntry.model.findByIdAndUpdate(registroId, { $set: { activo: false, updatedAt: new Date() } });
+              } else if (tablaKey === 'trips' || tablaKey === 'viajes') {
+                await modelEntry.model.findByIdAndUpdate(registroId, { $set: { estado: 'cancelado', updatedAt: new Date() } });
+              } else if (tablaKey === 'horarios') {
+                await modelEntry.model.findByIdAndUpdate(registroId, { $set: { activo: false, updatedAt: new Date() } });
+              } else {
+                // Hard delete for models without soft delete (passengers, payments, etc.)
+                await modelEntry.model.findByIdAndDelete(registroId);
+              }
             }
             break;
           default:
@@ -166,7 +181,7 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
             usuarioId: req.user._id,
             accion: `sync_${accion}`,
             entidad: modelEntry.name,
-            entidadId: registroId,
+            entidadId: isLocalId ? mongoId : registroId,
             datosNuevos: datos,
           });
         }
