@@ -127,17 +127,29 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
       }
 
       try {
+        // Handle local temp IDs (from offline mode)
+        const isLocalId = registroId.startsWith('local-');
+        const mongoId = isLocalId ? new mongoose.Types.ObjectId() : registroId;
+
         switch (accion) {
           case 'create':
           case 'update':
-            await modelEntry.model.findOneAndUpdate(
-              { _id: registroId },
-              { $set: { ...datos, updatedAt: new Date() } },
-              { upsert: true, new: true }
-            );
+            if (isLocalId) {
+              // Create new document with generated ObjectId
+              const doc = new modelEntry.model({ ...datos, _id: mongoId, updatedAt: new Date() });
+              await doc.save();
+            } else {
+              await modelEntry.model.findOneAndUpdate(
+                { _id: registroId },
+                { $set: { ...datos, updatedAt: new Date() } },
+                { upsert: true, new: true }
+              );
+            }
             break;
           case 'delete':
-            await modelEntry.model.findByIdAndDelete(registroId);
+            if (!isLocalId) {
+              await modelEntry.model.findByIdAndDelete(registroId);
+            }
             break;
           default:
             results.push({
@@ -159,7 +171,12 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
           });
         }
 
-        results.push({ tabla, registroId, status: 'ok' });
+        results.push({
+          tabla,
+          registroId,
+          status: 'ok',
+          ...(isLocalId ? { newId: mongoId.toString() } : {}),
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Error desconocido';
         results.push({
