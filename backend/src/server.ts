@@ -198,6 +198,20 @@ const startServer = async () => {
     // Seed admin users on startup
     await seedAdminUsers();
 
+    // Drop old unique index on passengers.dni if it exists
+    try {
+      const mongoose = await import('mongoose');
+      const Passenger = mongoose.default.model('Passenger');
+      const indexes = await Passenger.collection.indexes();
+      const dniIndex = indexes.find((i: any) => i.key?.dni === 1 && i.unique);
+      if (dniIndex?.name) {
+        await Passenger.collection.dropIndex(dniIndex.name);
+        logger.info('Índice único viejo en passengers.dni eliminado');
+      }
+    } catch {
+      // Index doesn't exist or already dropped — ignore
+    }
+
     httpServer.listen(config.port, () => {
       logger.info(`Servidor corriendo en http://${config.host}:${config.port}`);
       logger.info(`Entorno: ${config.env}`);

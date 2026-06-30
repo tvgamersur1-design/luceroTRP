@@ -14,7 +14,7 @@ export interface IPassenger extends Document {
 const PassengerSchema = new Schema<IPassenger>(
   {
     nombre: { type: String, required: true, trim: true },
-    dni: { type: String, unique: true, sparse: true },
+    dni: { type: String },
     telefono: { type: String },
     email: { type: String, lowercase: true, trim: true },
     totalViajes: { type: Number, default: 0 },
@@ -22,7 +22,5 @@ const PassengerSchema = new Schema<IPassenger>(
   },
   { timestamps: true }
 );
-
-PassengerSchema.index({ dni: 1 }, { sparse: true });
 
 export const Passenger = mongoose.model<IPassenger>('Passenger', PassengerSchema);
