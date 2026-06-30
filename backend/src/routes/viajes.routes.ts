@@ -321,6 +321,24 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
       throw new AppError('montoPagado debe ser un número válido', 400);
     }
 
+    // Seat conflict detection: check if any existing passenger already has these seats
+    if (asientos && asientos.length > 0) {
+      const viajeActual = await Trip.findById(req.params.id);
+      if (viajeActual) {
+        for (const num of asientos) {
+          const occupant = viajeActual.pasajeros.find((p: any) =>
+            p.asientos?.includes(num) &&
+            p.estado !== 'bajado' &&
+            p.estado !== 'no_llegado'
+          );
+          if (occupant) {
+            const occupantName = (occupant.pasajeroId as any)?.nombre || 'Otro pasajero';
+            throw new AppError(`Asiento #${num} ya esta ocupado por ${occupantName}`, 409);
+          }
+        }
+      }
+    }
+
     const montoNum = Number(montoPagado) || 0;
 
     const viaje = await Trip.findByIdAndUpdate(
@@ -381,6 +399,20 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
 
     const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    // Seat conflict detection: check if any OTHER passenger already has these seats
+    for (const num of asientos) {
+      const occupant = viaje.pasajeros.find((p: any) =>
+        p.pasajeroId?.toString() !== pasajero.pasajeroId?.toString() &&
+        p.asientos?.includes(num) &&
+        p.estado !== 'bajado' &&
+        p.estado !== 'no_llegado'
+      );
+      if (occupant) {
+        const occupantName = (occupant.pasajeroId as any)?.nombre || 'Otro pasajero';
+        throw new AppError(`Asiento #${num} ya esta ocupado por ${occupantName}`, 409);
+      }
+    }
 
     pasajero.asientos = asientos;
     pasajero.estado = 'abordado';
