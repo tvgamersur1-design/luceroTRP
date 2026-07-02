@@ -67,10 +67,19 @@ router.get('/debug-chofer', authenticate, async (req: AuthRequest, res: Response
 // GET /api/viajes - Listar viajes
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { estado, fecha, choferId, page = '1', limit = '50' } = req.query;
+    const { estado, fecha, fechaFin, choferId, page = '1', limit = '50' } = req.query;
     const filter: Record<string, unknown> = {};
 
-    if (fecha) filter.fechaInicio = { $gte: new Date(fecha as string) };
+    if (fecha || fechaFin) {
+      const dateFilter: Record<string, Date> = {};
+      if (fecha) dateFilter.$gte = new Date(fecha as string);
+      if (fechaFin) {
+        const end = new Date(fechaFin as string);
+        end.setHours(23, 59, 59, 999);
+        dateFilter.$lte = end;
+      }
+      filter.fechaInicio = dateFilter;
+    }
 
     if (choferId) {
       const driver = await Driver.findOne({ userId: choferId });
@@ -280,22 +289,58 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
       throw new AppError('No tienes permiso para completar este viaje', 403);
     }
 
-    const viaje = await Trip.findByIdAndUpdate(
+    const viaje = await Trip.findById(req.params.id);
+    if (!viaje) throw new AppError('Viaje no encontrado', 404);
+
+    // Validaciones
+    const pasajerosPendientes = viaje.pasajeros.filter(
+      p => p.estado !== 'bajado' && p.estado !== 'no_llegado'
+    );
+    const totalPasajeros = viaje.pasajeros.length;
+
+    if (totalPasajeros === 0) {
+      throw new AppError('Debe agregar al menos 1 pasajero antes de completar el viaje', 400);
+    }
+
+    if (pasajerosPendientes.length > 0) {
+      const nombres = pasajerosPendientes.map(p => {
+        const name = (p.pasajeroId as any)?.nombre || 'Pasajero';
+        return `${name} (${p.estado})`;
+      }).join(', ');
+      throw new AppError(
+        `Hay ${pasajerosPendientes.length} pasajero(s) pendiente(s): ${nombres}. Marque todos como bajado o no_llegado antes de completar.`,
+        400
+      );
+    }
+
+    // Guardar egresos
+    const { egresos = [] } = req.body;
+
+    const viajeActualizado = await Trip.findByIdAndUpdate(
       req.params.id,
-      { $set: { estado: 'completado', fechaFin: new Date() } },
+      {
+        $set: {
+          estado: 'completado',
+          fechaFin: new Date(),
+          egresos: egresos.map((e: any) => ({
+            concepto: e.concepto,
+            monto: e.monto,
+            categoria: e.categoria || 'otro',
+            timestamp: new Date(),
+          })),
+        },
+      },
       { new: true }
     )
       .populate('rutaId', 'nombre origen destino')
       .populate('vehiculoId', 'placa marca modelo')
       .populate('choferId', 'nombre');
 
-    if (!viaje) {
-      throw new AppError('Viaje no encontrado', 404);
-    }
+    if (!viajeActualizado) throw new AppError('Error al actualizar viaje', 500);
 
-    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
+    getIO().to('admins').to(`trip:${viajeActualizado._id}`).emit('trip:updated', viajeActualizado);
 
-    res.json({ message: 'Viaje completado', viaje });
+    res.json({ message: 'Viaje completado', viaje: viajeActualizado });
   } catch (error) {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ message: error.message });
@@ -518,6 +563,48 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
       return res.status(error.statusCode).json({ message: error.message });
     }
     res.status(500).json({ message: 'Error al registrar bajada' });
+  }
+});
+
+// PUT /api/viajes/:id/pasajeros/:pid/no-llegado - Marcar pasajero como no llegado
+router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-admin', 'admin', 'chofer'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!await canModifyTrip(req, req.params.id)) {
+      throw new AppError('No tienes permiso para modificar este viaje', 403);
+    }
+
+    const viaje = await Trip.findById(req.params.id);
+    if (!viaje) throw new AppError('Viaje no encontrado', 404);
+
+    const pasajero = viaje.pasajeros.find((p: any) =>
+      p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid
+    );
+    if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    // Restar del ingresoTotal si tenía monto
+    if (pasajero.montoPagado > 0) {
+      viaje.ingresoTotal = Math.max(0, viaje.ingresoTotal - pasajero.montoPagado);
+      pasajero.montoPagado = 0;
+    }
+
+    pasajero.estado = 'no_llegado';
+    await viaje.save();
+
+    const viajePopulado = await Trip.findById(req.params.id)
+      .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
+      .populate('vehiculoId', 'placa marca modelo capacidad configuracionAsientos')
+      .populate('choferId', 'nombre licencia telefono userId')
+      .populate('pasajeros.pasajeroId', 'nombre dni telefono')
+      .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
+
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
+
+    res.json({ message: 'Pasajero marcado como no llegado', viaje: viajePopulado });
+  } catch (error) {
+    if (error instanceof AppError) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error al marcar no llegado' });
   }
 });
 

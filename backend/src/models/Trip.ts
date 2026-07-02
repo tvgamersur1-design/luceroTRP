@@ -25,6 +25,12 @@ export interface ITrip extends Document {
     fechaBajada?: Date;
   }[];
   ingresoTotal: number;
+  egresos: {
+    concepto: string;
+    monto: number;
+    categoria: 'combustible' | 'propina' | 'comida' | 'otro';
+    timestamp: Date;
+  }[];
   combustibleInicial?: number;
   combustibleFinal?: number;
   kilometrosRecorridos?: number;
@@ -67,6 +73,14 @@ const TripSchema = new Schema<ITrip>(
       },
     ],
     ingresoTotal: { type: Number, default: 0 },
+    egresos: [
+      {
+        concepto: { type: String, required: true },
+        monto: { type: Number, required: true, min: 0 },
+        categoria: { type: String, enum: ['combustible', 'propina', 'comida', 'otro'], default: 'otro' },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
     combustibleInicial: { type: Number },
     combustibleFinal: { type: Number },
     kilometrosRecorridos: { type: Number },
