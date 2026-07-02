@@ -502,6 +502,14 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
 
     pasajero.estado = estado;
+    // Liberar asiento si el pasajero no llego
+    if (estado === 'no_llegado') {
+      pasajero.asientos = [];
+      if (pasajero.montoPagado > 0) {
+        viaje.ingresoTotal = Math.max(0, viaje.ingresoTotal - pasajero.montoPagado);
+        pasajero.montoPagado = 0;
+      }
+    }
     await viaje.save();
 
     const viajePopulado = await Trip.findById(req.params.id)
@@ -587,6 +595,8 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
       pasajero.montoPagado = 0;
     }
 
+    // Liberar asiento
+    pasajero.asientos = [];
     pasajero.estado = 'no_llegado';
     await viaje.save();
 
