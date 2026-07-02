@@ -20,7 +20,6 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     const [tarifas, total] = await Promise.all([
       Fare.find(filter)
-        .populate('rutaId', 'nombre origen destino')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum),

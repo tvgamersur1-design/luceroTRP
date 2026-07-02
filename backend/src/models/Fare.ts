@@ -29,4 +29,7 @@ const FareSchema = new Schema<IFare>(
   { timestamps: true }
 );
 
+FareSchema.index({ activa: 1, createdAt: -1 });
+FareSchema.index({ rutaId: 1 });
+
 export const Fare = mongoose.model<IFare>('Fare', FareSchema);
