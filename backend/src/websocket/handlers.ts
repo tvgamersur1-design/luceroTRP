@@ -20,6 +20,12 @@ export function setupWebSocket(io: Server): void {
     const userInfo = user ? `${user.email} (${user.rol})` : 'sin auth';
     logger.info(`Cliente WebSocket conectado: ${socket.id} (transport: ${socket.conn.transport.name}, user: ${userInfo})`);
 
+    // Auto-join role-based rooms
+    if (user?.rol === 'admin' || user?.rol === 'super-admin') {
+      socket.join('admins');
+      logger.info(`Socket ${socket.id} auto-joined 'admins' room (rol: ${user.rol})`);
+    }
+
     socket.conn.on('upgrade', (transport: any) => {
       logger.info(`Socket ${socket.id} upgraded to ${transport.name}`);
     });
@@ -27,6 +33,20 @@ export function setupWebSocket(io: Server): void {
     socket.on('join:admin', () => {
       socket.join('admins');
       logger.info(`Socket ${socket.id} se unió a sala 'admins'`);
+    });
+
+    socket.on('join:trip', (data: { viajeId: string }) => {
+      if (data?.viajeId) {
+        socket.join(`trip:${data.viajeId}`);
+        logger.info(`Socket ${socket.id} se unió a sala 'trip:${data.viajeId}'`);
+      }
+    });
+
+    socket.on('leave:trip', (data: { viajeId: string }) => {
+      if (data?.viajeId) {
+        socket.leave(`trip:${data.viajeId}`);
+        logger.info(`Socket ${socket.id} salió de sala 'trip:${data.viajeId}'`);
+      }
     });
 
     socket.on('chofer:location', async (data: LocationData) => {

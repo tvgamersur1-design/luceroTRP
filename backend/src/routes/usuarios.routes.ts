@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { authenticate, requireRole } from '../middleware/auth';
 import { User } from '../models/User';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -74,6 +75,16 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req, 
     });
 
     const { password: _, ...userWithoutPassword } = user.toObject();
+
+    const io = getIO();
+    io.to('admins').emit('user:created', {
+      entity: 'user',
+      action: 'created',
+      data: userWithoutPassword,
+      timestamp: new Date().toISOString(),
+      userId: (req as any).user?._id,
+    });
+
     res.status(201).json({ user: userWithoutPassword });
   } catch (error) {
     console.error('[usuarios] Create error:', error);
@@ -101,6 +112,15 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
 
+    const io = getIO();
+    io.to('admins').emit('user:updated', {
+      entity: 'user',
+      action: 'updated',
+      data: user,
+      timestamp: new Date().toISOString(),
+      userId: (req as any).user?._id,
+    });
+
     res.json({ user });
   } catch (error) {
     console.error('[usuarios] Update error:', error);
@@ -120,6 +140,15 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!user) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
+
+    const io = getIO();
+    io.to('admins').emit('user:deleted', {
+      entity: 'user',
+      action: 'deleted',
+      data: { _id: req.params.id },
+      timestamp: new Date().toISOString(),
+      userId: (req as any).user?._id,
+    });
 
     res.json({ message: 'Usuario eliminado', user });
   } catch (error) {

@@ -180,7 +180,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       .populate('vehiculoId', 'placa marca modelo')
       .populate('choferId', 'nombre');
 
-    getIO().emit('trip:created', viajePopulado);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:created', viajePopulado);
 
     res.status(201).json(viajePopulado);
   } catch (error) {
@@ -207,7 +207,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().emit('trip:updated', viaje);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
 
     res.json(viaje);
   } catch (error) {
@@ -231,7 +231,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().emit('trip:deleted', req.params.id);
+    getIO().to('admins').to(`trip:${req.params.id}`).emit('trip:deleted', req.params.id);
 
     res.json({ message: 'Viaje cancelado exitosamente', viaje });
   } catch (error) {
@@ -262,7 +262,7 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().emit('trip:updated', viaje);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
 
     res.json({ message: 'Viaje iniciado', viaje });
   } catch (error) {
@@ -293,7 +293,7 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().emit('trip:updated', viaje);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
 
     res.json({ message: 'Viaje completado', viaje });
   } catch (error) {
@@ -370,7 +370,7 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().emit('trip:updated', viaje);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
 
     res.json({ message: 'Pasajero agregado al viaje', viaje });
   } catch (error) {
@@ -425,7 +425,7 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().emit('trip:updated', viajePopulado);
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
 
     res.json({ message: 'Asiento(s) asignado(s)', viaje: viajePopulado });
   } catch (error) {
@@ -466,7 +466,7 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().emit('trip:updated', viajePopulado);
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
 
     res.json({ message: 'Estado actualizado', viaje: viajePopulado });
   } catch (error) {
@@ -510,7 +510,7 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().emit('trip:updated', viajePopulado);
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
 
     res.json({ message: 'Bajada registrada', viaje: viajePopulado });
   } catch (error) {

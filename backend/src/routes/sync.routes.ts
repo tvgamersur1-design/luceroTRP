@@ -108,8 +108,10 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
     const results: Array<{
       tabla: string;
       registroId: string;
-      status: 'ok' | 'error';
+      status: 'ok' | 'error' | 'conflict';
       error?: string;
+      newId?: string;
+      serverData?: Record<string, unknown>;
     }> = [];
 
     for (const change of changes) {
@@ -139,6 +141,23 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
               const doc = new modelEntry.model({ ...datos, _id: mongoId, updatedAt: new Date() });
               await doc.save();
             } else {
+              // LWW: Check server's updatedAt before applying
+              const existing = await modelEntry.model.findById(registroId).lean();
+              if (existing) {
+                const serverUpdatedAt = (existing as any).updatedAt;
+                const clientUpdatedAt = datos?.updatedAt ? new Date(datos.updatedAt as string) : null;
+
+                if (serverUpdatedAt && clientUpdatedAt && clientUpdatedAt < new Date(serverUpdatedAt)) {
+                  results.push({
+                    tabla,
+                    registroId,
+                    status: 'conflict',
+                    error: 'Server has newer version',
+                    serverData: existing as Record<string, unknown>,
+                  });
+                  continue;
+                }
+              }
               await modelEntry.model.findOneAndUpdate(
                 { _id: registroId },
                 { $set: { ...datos, updatedAt: new Date() } },
@@ -205,12 +224,14 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
 
     const successCount = results.filter((r) => r.status === 'ok').length;
     const errorCount = results.filter((r) => r.status === 'error').length;
+    const conflictCount = results.filter((r) => r.status === 'conflict').length;
 
     res.json({
-      message: `Sincronizados: ${successCount} exitosos, ${errorCount} con error`,
+      message: `Sincronizados: ${successCount} exitosos, ${errorCount} con error, ${conflictCount} conflictos`,
       results,
       successCount,
       errorCount,
+      conflictCount,
     });
   } catch (error) {
     if (error instanceof AppError) {
