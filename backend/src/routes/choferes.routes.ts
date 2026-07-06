@@ -135,7 +135,25 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       });
     }
 
-    getIO().emit('driver:created', { _id: user._id, email: user.email, nombre: user.nombre, rol: user.rol });
+    const userWithoutPassword = {
+      _id: user._id,
+      email: user.email,
+      nombre: user.nombre,
+      rol: user.rol,
+      adminId: user.adminId,
+      activo: user.activo,
+      createdAt: user.createdAt,
+    };
+
+    const io = getIO();
+    io.emit('driver:created', userWithoutPassword);
+    io.to('admins').emit('user:created', {
+      entity: 'user',
+      action: 'created',
+      data: userWithoutPassword,
+      timestamp: new Date().toISOString(),
+      userId: req.user?._id,
+    });
 
     res.status(201).json({
       _id: user._id,
@@ -195,16 +213,26 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       }
     }
 
-    getIO().emit('driver:updated', { _id: usuario._id, email: usuario.email, nombre: usuario.nombre, rol: usuario.rol });
-
-    res.json({
+    const updatedUser = {
       _id: usuario._id,
       email: usuario.email,
       nombre: usuario.nombre,
       rol: usuario.rol,
       adminId: usuario.adminId,
       activo: usuario.activo,
+    };
+
+    const io = getIO();
+    io.emit('driver:updated', updatedUser);
+    io.to('admins').emit('user:updated', {
+      entity: 'user',
+      action: 'updated',
+      data: updatedUser,
+      timestamp: new Date().toISOString(),
+      userId: req.user?._id,
     });
+
+    res.json(updatedUser);
   } catch (error) {
     if (error instanceof AppError) {
       return res.status(error.statusCode).json({ message: error.message });
@@ -233,7 +261,15 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
       );
     }
 
-    getIO().emit('driver:deleted', req.params.id);
+    const io = getIO();
+    io.emit('driver:deleted', req.params.id);
+    io.to('admins').emit('user:deleted', {
+      entity: 'user',
+      action: 'deleted',
+      data: { _id: req.params.id },
+      timestamp: new Date().toISOString(),
+      userId: req.user?._id,
+    });
 
     res.json({ message: 'Usuario desactivado exitosamente', usuario });
   } catch (error) {
