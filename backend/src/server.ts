@@ -27,6 +27,7 @@ import { syncRoutes } from './routes/sync.routes';
 import { pasajerosRoutes } from './routes/pasajeros.routes';
 import { locationRoutes } from './routes/location.routes';
 import { horariosRoutes } from './routes/horarios.routes';
+import { notificationsRoutes } from './routes/notifications.routes';
 import { setupWebSocket } from './websocket/handlers';
 import { setIO } from './websocket/socket';
 import { User } from './models/User';
@@ -155,6 +156,7 @@ app.use('/api/sync', syncRoutes);
 app.use('/api/pasajeros', pasajerosRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/horarios', horariosRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

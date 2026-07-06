@@ -2,8 +2,10 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Trip } from '../models/Trip';
 import { Driver } from '../models/Driver';
+import { User } from '../models/User';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../websocket/socket';
+import { sendPushToUser } from '../services/push';
 
 const router = Router();
 
@@ -190,6 +192,24 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       .populate('choferId', 'nombre');
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:created', viajePopulado);
+    getIO().to(`driver:${choferId}`).emit('trip:created', viajePopulado);
+
+    // Send push notification to the assigned driver
+    try {
+      const driver = await Driver.findById(choferId).populate('userId', 'nombre');
+      const driverUser = driver?.userId as any;
+      if (driverUser?._id && viajePopulado) {
+        const ruta = viajePopulado.rutaId as any;
+        await sendPushToUser(
+          driverUser._id.toString(),
+          'Nuevo viaje asignado',
+          `Se te ha asignado un viaje: ${ruta?.nombre || 'Sin ruta'} - ${new Date(fechaInicio).toLocaleDateString()}`,
+          { viajeId: viaje._id.toString(), type: 'trip_assigned' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Error sending trip assignment push:', pushErr);
+    }
 
     res.status(201).json(viajePopulado);
   } catch (error) {
@@ -416,6 +436,23 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     }
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
+
+    // Send push notification to the driver about new passenger
+    try {
+      const choferUserId = (viaje.choferId as any)?.userId || viaje.choferId;
+      const passengerDoc = viaje.pasajeros[viaje.pasajeros.length - 1];
+      const passengerName = (passengerDoc?.pasajeroId as any)?.nombre || 'Pasajero';
+      if (choferUserId) {
+        await sendPushToUser(
+          choferUserId.toString(),
+          'Nuevo pasajero',
+          `${passengerName} ha sido agregado a tu viaje`,
+          { viajeId: viaje._id.toString(), type: 'passenger_added' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Error sending passenger push:', pushErr);
+    }
 
     res.json({ message: 'Pasajero agregado al viaje', viaje });
   } catch (error) {

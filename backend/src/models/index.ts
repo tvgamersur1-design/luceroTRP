@@ -9,3 +9,4 @@ export { Payment } from './Payment';
 export { Alert } from './Alert';
 export { Incident } from './Incident';
 export { AuditLog } from './AuditLog';
+export { DeviceToken } from './DeviceToken';

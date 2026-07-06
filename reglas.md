@@ -63,7 +63,8 @@ Si el backend no emite el evento, el store no se actualiza en tiempo real.
 | **Usuarios** | `usersRepo` | `usuariosAPI.list()` | `user:*` | ✅ |
 | **Horarios** | `horariosRepo` | `horariosAPI.list()` | `horario:*` | ✅ |
 | **Viajes** | `tripsRepo` | `viajesAPI.list()` | `trip:*` | ✅ |
-| **Pasajeros** | `passengersRepo` | `pasajerosAPI.list()` | ❌ | ❌ |
+| **Pasajeros** | `passengersRepo` | `pasajerosAPI.list()` | `trip:*` (vía viaje) | ✅ |
+| **Notificaciones** | — | — | `driver:*`, `trip:notify` | — |
 
 ---
 
@@ -118,6 +119,60 @@ await rutasAPI.create(formData);
 
 **Regla: La app NUNCA muestra "sin conexión" como estado de error.**
 La app siempre funciona con datos locales. El sync es transparente.
+
+---
+
+## Flujo de Notificaciones Push
+
+### Arquitectura
+
+```
+Backend (Firebase Admin) → FCM → Dispositivo Android
+                                     ↓
+                              Push Notification (background)
+                              Toast In-App (foreground)
+```
+
+### Registro de Token
+
+1. Al hacer login → `notificationsService.register()` → obtiene FCM token
+2. FCM token se envía al backend → `POST /api/notifications/register-token`
+3. Backend guarda token en colección `devicetokens`
+4. Al hacer logout → `DELETE /api/notifications/unregister-token`
+
+### Eventos que generan notificación push
+
+| Evento | Destinatario | Mensaje |
+|--------|-------------|---------|
+| Nuevo viaje creado (`POST /api/viajes`) | Chofer asignado | "Nuevo viaje asignado: {ruta}" |
+| Nuevo pasajero agregado (`POST /api/viajes/:id/pasajeros`) | Chofer del viaje | "Nuevo pasajero: {nombre}" |
+
+### Socket.IO + Push (doble capa)
+
+- **Socket.IO**: actualización en tiempo real si la app está abierta
+- **Push notification**: notificación silenciosa si la app está en background/cerrada
+- Ambos se emiten simultáneamente para máxima confiabilidad
+
+### Room `driver:{choferId}`
+
+- El chofer se une automáticamente a su room al conectar el socket
+- Los eventos `trip:created` y `trip:updated` se emiten a `admins` + `driver:{choferId}`
+- Permite que el chofer reciba solo sus notificaciones, no las de todos
+
+### Permisos Android
+
+```xml
+<!-- AndroidManifest.xml -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+<uses-permission android:name="android.permission.VIBRATE" />
+```
+
+### Requisitos Firebase
+
+1. Proyecto Firebase con app Android (`com.lucero.trp`)
+2. `google-services.json` en `frontend-mobile/android/app/`
+3. Service Account JSON en variable de entorno `FIREBASE_SERVICE_ACCOUNT` del backend
 
 ---
 
@@ -211,3 +266,19 @@ await rutasAPI.delete(id);             // sin executeOfflineAction
 | AdminHorarios | ❌ | ❌ | ✅ | Agregar confirm + loading |
 | AdminViajes | ❌ | ❌ | ✅ | Agregar confirm + loading |
 | AdminViajeDetalle | ❌ | ❌ | Parcial | Agregar confirm + loading + offline pattern |
+
+---
+
+## Reglas de Notificaciones
+
+**Regla: Toda acción que afecte a un chofer específico DEBE emitir notificación push + Socket.IO a la room `driver:{choferId}`.**
+
+- Crear viaje → push al chofer asignado
+- Agregar pasajero → push al chofer del viaje
+- Cambiar estado de viaje → push al chofer del viaje
+
+**Regla: Las notificaciones push son complemento, NO reemplazo de Socket.IO.**
+
+- Socket.IO actualiza el store en tiempo real
+- Push notification informa al usuario cuando la app está en background
+- Siempre emitir ambos

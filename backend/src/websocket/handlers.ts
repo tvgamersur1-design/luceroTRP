@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { Location } from '../models/Location';
 import { Trip } from '../models/Trip';
 import { Alert } from '../models/Alert';
+import { Driver } from '../models/Driver';
 
 interface LocationData {
   choferId: string;
@@ -15,7 +16,7 @@ interface LocationData {
 }
 
 export function setupWebSocket(io: Server): void {
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', async (socket: Socket) => {
     const user = socket.data.user;
     const userInfo = user ? `${user.email} (${user.rol})` : 'sin auth';
     logger.info(`Cliente WebSocket conectado: ${socket.id} (transport: ${socket.conn.transport.name}, user: ${userInfo})`);
@@ -24,6 +25,15 @@ export function setupWebSocket(io: Server): void {
     if (user?.rol === 'admin' || user?.rol === 'super-admin') {
       socket.join('admins');
       logger.info(`Socket ${socket.id} auto-joined 'admins' room (rol: ${user.rol})`);
+    }
+
+    // Auto-join driver room if user is a chofer
+    if (user?.rol === 'chofer') {
+      const driver = await Driver.findOne({ userId: user._id });
+      if (driver) {
+        socket.join(`driver:${driver._id.toString()}`);
+        logger.info(`Socket ${socket.id} auto-joined 'driver:${driver._id}' room`);
+      }
     }
 
     socket.conn.on('upgrade', (transport: any) => {
