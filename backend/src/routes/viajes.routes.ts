@@ -537,7 +537,7 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
       throw new AppError('No tienes permiso para registrar bajadas en este viaje', 403);
     }
 
-    const { paradaBajada, montoCobrado } = req.body;
+    const { paradaBajada, montoCobrado, metodoPago } = req.body;
 
     const viaje = await Trip.findById(req.params.id);
     if (!viaje) throw new AppError('Viaje no encontrado', 404);
@@ -548,6 +548,10 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
     pasajero.estado = 'bajado';
     pasajero.paradaBajada = paradaBajada || pasajero.destino || '';
     pasajero.fechaBajada = new Date();
+
+    if (metodoPago && metodoPago !== 'pendiente') {
+      pasajero.metodoPago = metodoPago;
+    }
 
     if (montoCobrado !== undefined && montoCobrado !== pasajero.montoPagado) {
       viaje.ingresoTotal = viaje.ingresoTotal - pasajero.montoPagado + montoCobrado;
