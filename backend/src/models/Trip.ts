@@ -15,7 +15,7 @@ export interface ITrip extends Document {
   pasajeros: {
     pasajeroId: mongoose.Types.ObjectId;
     montoPagado: number;
-    metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta';
+    metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta' | 'pendiente';
     timestamp: Date;
     asientos?: number[];
     estado: 'reservado' | 'en_terminal' | 'abordado' | 'no_llegado' | 'bajado';

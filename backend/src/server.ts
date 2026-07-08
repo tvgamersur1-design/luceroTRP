@@ -43,37 +43,41 @@ const asyncHandler = (fn: (req: Request, res: Response, next: NextFunction) => P
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 
-// Seed admin users if they don't exist
+// Seed admin users if they don't exist (credentials from env vars)
 const seedAdminUsers = async () => {
   try {
-    const existingAdmin = await User.findOne({ email: 'admin@lucero.com' });
-    if (!existingAdmin) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
-      await User.create({
-        email: 'admin@lucero.com',
-        password: hashedPassword,
-        nombre: 'Admin Lucero',
-        rol: 'admin',
-        activo: true,
-      });
-      logger.info('Usuario admin creado: admin@lucero.com / admin123');
-    } else {
-      logger.info('Usuario admin ya existe');
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (adminEmail && adminPassword) {
+      const existingAdmin = await User.findOne({ email: adminEmail });
+      if (!existingAdmin) {
+        const hashedPassword = await bcrypt.hash(adminPassword, 10);
+        await User.create({
+          email: adminEmail,
+          password: hashedPassword,
+          nombre: 'Admin',
+          rol: 'admin',
+          activo: true,
+        });
+        logger.info(`Usuario admin creado: ${adminEmail}`);
+      }
     }
 
-    const existingSuper = await User.findOne({ email: 'super@lucero.com' });
-    if (!existingSuper) {
-      const hashedPassword = await bcrypt.hash('super123', 10);
-      await User.create({
-        email: 'super@lucero.com',
-        password: hashedPassword,
-        nombre: 'Super Admin',
-        rol: 'super-admin',
-        activo: true,
-      });
-      logger.info('Usuario super-admin creado: super@lucero.com / super123');
-    } else {
-      logger.info('Usuario super-admin ya existe');
+    const superEmail = process.env.SUPER_ADMIN_EMAIL;
+    const superPassword = process.env.SUPER_ADMIN_PASSWORD;
+    if (superEmail && superPassword) {
+      const existingSuper = await User.findOne({ email: superEmail });
+      if (!existingSuper) {
+        const hashedPassword = await bcrypt.hash(superPassword, 10);
+        await User.create({
+          email: superEmail,
+          password: hashedPassword,
+          nombre: 'Super Admin',
+          rol: 'super-admin',
+          activo: true,
+        });
+        logger.info(`Usuario super-admin creado: ${superEmail}`);
+      }
     }
   } catch (error) {
     logger.error('Error en seed de usuarios:', error);

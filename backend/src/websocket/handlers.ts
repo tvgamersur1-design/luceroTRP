@@ -1,19 +1,8 @@
 import { Server, Socket } from 'socket.io';
 import { logger } from '../utils/logger';
-import { Location } from '../models/Location';
 import { Trip } from '../models/Trip';
 import { Alert } from '../models/Alert';
 import { Driver } from '../models/Driver';
-
-interface LocationData {
-  choferId: string;
-  vehiculoId?: string;
-  viajeId?: string;
-  lat: number;
-  lng: number;
-  velocidad?: number;
-  direccion?: number;
-}
 
 export function setupWebSocket(io: Server): void {
   io.on('connection', async (socket: Socket) => {
@@ -56,32 +45,6 @@ export function setupWebSocket(io: Server): void {
       if (data?.viajeId) {
         socket.leave(`trip:${data.viajeId}`);
         logger.info(`Socket ${socket.id} salió de sala 'trip:${data.viajeId}'`);
-      }
-    });
-
-    socket.on('chofer:location', async (data: LocationData) => {
-      try {
-        await Location.create({
-          choferId: data.choferId,
-          vehiculoId: data.vehiculoId,
-          viajeId: data.viajeId,
-          lat: data.lat,
-          lng: data.lng,
-          velocidad: data.velocidad,
-          direccion: data.direccion,
-          timestamp: new Date(),
-        });
-
-        io.emit('location:update', {
-          choferId: data.choferId,
-          lat: data.lat,
-          lng: data.lng,
-          velocidad: data.velocidad,
-          direccion: data.direccion,
-          timestamp: new Date(),
-        });
-      } catch (error) {
-        logger.error('Error guardando ubicación:', error);
       }
     });
 
