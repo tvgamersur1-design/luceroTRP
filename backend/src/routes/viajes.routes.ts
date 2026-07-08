@@ -198,14 +198,34 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
     try {
       const driver = await Driver.findById(choferId).populate('userId', 'nombre');
       const driverUser = driver?.userId as any;
+      const ruta = viajePopulado?.rutaId as any;
+      const fechaLabel = new Date(fechaInicio).toLocaleDateString();
       if (driverUser?._id && viajePopulado) {
-        const ruta = viajePopulado.rutaId as any;
         await sendPushToUser(
           driverUser._id.toString(),
           'Nuevo viaje asignado',
-          `Se te ha asignado un viaje: ${ruta?.nombre || 'Sin ruta'} - ${new Date(fechaInicio).toLocaleDateString()}`,
+          `Se te ha asignado un viaje: ${ruta?.nombre || 'Sin ruta'} - ${fechaLabel}`,
           { viajeId: viaje._id.toString(), type: 'trip_assigned' }
         );
+      }
+      // Notify ayudantes (assistants)
+      if (ayudantes && ayudantes.length > 0) {
+        for (const ay of ayudantes) {
+          try {
+            const ayDriver = await Driver.findById(ay.choferId).populate('userId', 'nombre');
+            const ayUser = ayDriver?.userId as any;
+            if (ayUser?._id) {
+              await sendPushToUser(
+                ayUser._id.toString(),
+                'Nuevo viaje asignado',
+                `Se te ha asignado como ayudante: ${ruta?.nombre || 'Sin ruta'} - ${fechaLabel}`,
+                { viajeId: viaje._id.toString(), type: 'trip_assigned' }
+              );
+            }
+          } catch (ayErr) {
+            console.error('Error sending push to ayudante:', ayErr);
+          }
+        }
       }
     } catch (pushErr) {
       console.error('Error sending trip assignment push:', pushErr);
@@ -449,6 +469,28 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
           `${passengerName} ha sido agregado a tu viaje`,
           { viajeId: viaje._id.toString(), type: 'passenger_added' }
         );
+      }
+      // Notify ayudantes (assistants) about new passenger
+      if (viaje.ayudantes && viaje.ayudantes.length > 0) {
+        for (const ay of viaje.ayudantes) {
+          try {
+            const ayDriverId = (ay.choferId as any)?._id || ay.choferId;
+            if (ayDriverId) {
+              const ayDriver = await Driver.findById(ayDriverId).populate('userId', 'nombre');
+              const ayUser = ayDriver?.userId as any;
+              if (ayUser?._id) {
+                await sendPushToUser(
+                  ayUser._id.toString(),
+                  'Nuevo pasajero',
+                  `${passengerName} ha sido agregado al viaje`,
+                  { viajeId: viaje._id.toString(), type: 'passenger_added' }
+                );
+              }
+            }
+          } catch (ayErr) {
+            console.error('Error sending push to ayudante:', ayErr);
+          }
+        }
       }
     } catch (pushErr) {
       console.error('Error sending passenger push:', pushErr);
