@@ -5,6 +5,10 @@ import { AppError } from '../middleware/errorHandler';
 
 const router = Router();
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // GET /api/pasajeros - Listar pasajeros
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
@@ -12,7 +16,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     const filter: Record<string, unknown> = {};
 
     if (search) {
-      const term = search as string;
+      const term = escapeRegex(search as string);
       filter.$or = [
         { nombre: { $regex: term, $options: 'i' } },
         { dni: { $regex: term, $options: 'i' } },
