@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { AppError } from '../middleware/errorHandler';
 import { User } from '../models/User';
-import { authenticate, AuthRequest } from '../middleware/auth';
+import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -68,8 +68,8 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
-// POST /api/auth/register
-router.post('/register', async (req: Request, res: Response) => {
+// POST /api/auth/register — solo super-admin puede crear usuarios
+router.post('/register', authenticate, requireRole('super-admin'), async (req: Request, res: Response) => {
   try {
     const { email, password, nombre, rol, adminId } = req.body;
 
