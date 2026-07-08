@@ -300,7 +300,7 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
 
     const viaje = await Trip.findByIdAndUpdate(
       req.params.id,
-      { $set: { estado: 'en_transito', fechaInicio: new Date() } },
+      { $set: { estado: 'en_transito', fechaInicioReal: new Date() } },
       { new: true }
     )
       .populate('rutaId', 'nombre origen destino')

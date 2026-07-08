@@ -11,6 +11,7 @@ export interface ITrip extends Document {
   }[];
   estado: 'planificado' | 'en_transito' | 'completado' | 'cancelado';
   fechaInicio: Date;
+  fechaInicioReal?: Date;
   fechaFin?: Date;
   pasajeros: {
     pasajeroId: mongoose.Types.ObjectId;
@@ -57,6 +58,7 @@ const TripSchema = new Schema<ITrip>(
       default: 'planificado',
     },
     fechaInicio: { type: Date, required: true },
+    fechaInicioReal: { type: Date },
     fechaFin: { type: Date },
     pasajeros: [
       {
