@@ -26,7 +26,7 @@ router.post('/register-token', authenticate, async (req: AuthRequest, res: Respo
       { upsert: true, new: true }
     );
 
-    logger.info(`FCM token registrado para usuario ${userId}`);
+    logger.info(`[Notifications] FCM token registrado — userId=${userId}, platform=${platform}, token=${fcmToken.substring(0, 20)}...`);
     res.json({ message: 'Token registrado' });
   } catch (error) {
     logger.error('Error registrando token:', error);

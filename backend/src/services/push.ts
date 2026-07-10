@@ -40,11 +40,14 @@ export async function sendPushToToken(
   data?: Record<string, string>
 ): Promise<boolean> {
   const app = getFirebaseApp();
-  if (!app) return false;
+  if (!app) {
+    logger.warn('[Push] Firebase app no inicializada — skip push');
+    return false;
+  }
 
   try {
     const messaging = getMessaging(app);
-    await messaging.send({
+    const result = await messaging.send({
       token: fcmToken,
       notification: { title, body },
       data: data || {},
@@ -56,13 +59,14 @@ export async function sendPushToToken(
         },
       },
     });
+    logger.info(`[Push] Enviado OK a token ${fcmToken.substring(0, 20)}... msgId=${result}`);
     return true;
   } catch (error: any) {
     if (error.code === 'messaging/registration-token-not-registered') {
-      logger.warn(`Token FCM inválido, removiendo: ${fcmToken.substring(0, 20)}...`);
+      logger.warn(`[Push] Token FCM inválido, removiendo: ${fcmToken.substring(0, 20)}...`);
       await DeviceToken.findOneAndDelete({ fcmToken });
     } else {
-      logger.error('Error enviando push notification:', error);
+      logger.error('[Push] Error enviando push notification:', error.message || error);
     }
     return false;
   }
@@ -74,14 +78,21 @@ export async function sendPushToUser(
   body: string,
   data?: Record<string, string>
 ): Promise<number> {
+  logger.info(`[Push] Buscando tokens para userId=${userId}`);
   const tokens = await DeviceToken.find({ userId, active: true }).select('fcmToken');
-  if (tokens.length === 0) return 0;
+  logger.info(`[Push] Encontrados ${tokens.length} tokens activos para userId=${userId}`);
+
+  if (tokens.length === 0) {
+    logger.warn(`[Push] NO hay tokens registrados para userId=${userId} — push no enviado`);
+    return 0;
+  }
 
   let sent = 0;
   for (const doc of tokens) {
     const ok = await sendPushToToken(doc.fcmToken, title, body, data);
     if (ok) sent++;
   }
+  logger.info(`[Push] Enviados ${sent}/${tokens.length} pushes para userId=${userId}`);
   return sent;
 }
 
