@@ -328,7 +328,8 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
     }
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
-    const choferRoomId = typeof viaje.choferId === 'object' ? viaje.choferId?._id?.toString() : viaje.choferId?.toString();
+    const choferObj = viaje.choferId as any;
+    const choferRoomId = choferObj?._id?.toString() || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
     if (choferRoomId) getIO().to(`driver:${choferRoomId}`).emit('trip:updated', viaje);
 
     res.json({ message: 'Viaje iniciado', viaje });
@@ -474,7 +475,8 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     }
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
-    const addChoferRoom = typeof viaje.choferId === 'object' ? viaje.choferId?._id?.toString() : viaje.choferId?.toString();
+    const addChoferObj = viaje.choferId as any;
+    const addChoferRoom = addChoferObj?._id?.toString() || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
     if (addChoferRoom) getIO().to(`driver:${addChoferRoom}`).emit('trip:updated', viaje);
 
     // Send push notification to the driver about new passenger
@@ -571,7 +573,8 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
-    const seatChoferRoom = typeof viajePopulado?.choferId === 'object' ? viajePopulado?.choferId?._id?.toString() : viajePopulado?.choferId?.toString();
+    const seatChoferObj = viajePopulado?.choferId as any;
+    const seatChoferRoom = seatChoferObj?._id?.toString() || (typeof viajePopulado?.choferId === 'string' ? viajePopulado?.choferId : '');
     if (seatChoferRoom) getIO().to(`driver:${seatChoferRoom}`).emit('trip:updated', viajePopulado);
 
     res.json({ message: 'Asiento(s) asignado(s)', viaje: viajePopulado });
