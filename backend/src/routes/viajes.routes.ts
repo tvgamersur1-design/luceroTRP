@@ -9,6 +9,20 @@ import { sendPushToUser } from '../services/push';
 
 const router = Router();
 
+// Helper: emit trip update to admins + trip room + driver room
+function emitTripUpdate(viajePopulated: any) {
+  const io = getIO();
+  const tripId = viajePopulated?._id?.toString();
+  const choferId = typeof viajePopulated?.choferId === 'object' && viajePopulated?.choferId !== null
+    ? viajePopulated.choferId._id?.toString() || viajePopulated.choferId.toString()
+    : viajePopulated?.choferId?.toString();
+
+  io.to('admins').to(`trip:${tripId}`).emit('trip:updated', viajePopulated);
+  if (choferId) {
+    io.to(`driver:${choferId}`).emit('trip:updated', viajePopulated);
+  }
+}
+
 async function canModifyTrip(req: AuthRequest, viajeId: string): Promise<boolean> {
   if (req.user?.rol === 'super-admin' || req.user?.rol === 'admin') return true;
 
@@ -199,12 +213,14 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       const driver = await Driver.findById(choferId).populate('userId', 'nombre');
       const driverUser = driver?.userId as any;
       const ruta = viajePopulado?.rutaId as any;
+      const vehiculo = viajePopulado?.vehiculoId as any;
       const fechaLabel = new Date(fechaInicio).toLocaleDateString();
+      const horaLabel = horaSalida || new Date(fechaInicio).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
       if (driverUser?._id && viajePopulado) {
         await sendPushToUser(
           driverUser._id.toString(),
-          'Nuevo viaje asignado',
-          `Se te ha asignado un viaje: ${ruta?.nombre || 'Sin ruta'} - ${fechaLabel}`,
+          '🚗 Nuevo viaje asignado',
+          `Ruta: ${ruta?.nombre || 'Sin ruta'} | ${vehiculo?.placa || ''} | ${fechaLabel} ${horaLabel}`,
           { viajeId: viaje._id.toString(), type: 'trip_assigned' }
         );
       }
@@ -217,8 +233,8 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
             if (ayUser?._id) {
               await sendPushToUser(
                 ayUser._id.toString(),
-                'Nuevo viaje asignado',
-                `Se te ha asignado como ayudante: ${ruta?.nombre || 'Sin ruta'} - ${fechaLabel}`,
+                '🚗 Te asignaron como ayudante',
+                `Ruta: ${ruta?.nombre || 'Sin ruta'} | ${fechaLabel} ${horaLabel}`,
                 { viajeId: viaje._id.toString(), type: 'trip_assigned' }
               );
             }
@@ -256,7 +272,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
+    emitTripUpdate(viaje);
 
     res.json(viaje);
   } catch (error) {
@@ -280,7 +296,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
       throw new AppError('Viaje no encontrado', 404);
     }
 
-    getIO().to('admins').to(`trip:${req.params.id}`).emit('trip:deleted', req.params.id);
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:deleted', viaje._id.toString());
 
     res.json({ message: 'Viaje cancelado exitosamente', viaje });
   } catch (error) {
@@ -312,6 +328,8 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
     }
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
+    const choferRoomId = typeof viaje.choferId === 'object' ? viaje.choferId?._id?.toString() : viaje.choferId?.toString();
+    if (choferRoomId) getIO().to(`driver:${choferRoomId}`).emit('trip:updated', viaje);
 
     res.json({ message: 'Viaje iniciado', viaje });
   } catch (error) {
@@ -378,7 +396,7 @@ router.put('/:id/completar', authenticate, requireRole('super-admin', 'admin', '
 
     if (!viajeActualizado) throw new AppError('Error al actualizar viaje', 500);
 
-    getIO().to('admins').to(`trip:${viajeActualizado._id}`).emit('trip:updated', viajeActualizado);
+    emitTripUpdate(viajeActualizado);
 
     res.json({ message: 'Viaje completado', viaje: viajeActualizado });
   } catch (error) {
@@ -456,17 +474,20 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     }
 
     getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:updated', viaje);
+    const addChoferRoom = typeof viaje.choferId === 'object' ? viaje.choferId?._id?.toString() : viaje.choferId?.toString();
+    if (addChoferRoom) getIO().to(`driver:${addChoferRoom}`).emit('trip:updated', viaje);
 
     // Send push notification to the driver about new passenger
     try {
       const choferUserId = (viaje.choferId as any)?.userId || viaje.choferId;
       const passengerDoc = viaje.pasajeros[viaje.pasajeros.length - 1];
       const passengerName = (passengerDoc?.pasajeroId as any)?.nombre || 'Pasajero';
+      const destino = passengerDoc?.destino || 'destino no especificado';
       if (choferUserId) {
         await sendPushToUser(
           choferUserId.toString(),
-          'Nuevo pasajero',
-          `${passengerName} ha sido agregado a tu viaje`,
+          '👤 Nuevo pasajero en tu viaje',
+          `${passengerName} → ${destino} | Asientos: ${passengerDoc?.asientos?.join(', ') || 'Sin asignar'}`,
           { viajeId: viaje._id.toString(), type: 'passenger_added' }
         );
       }
@@ -481,8 +502,8 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
               if (ayUser?._id) {
                 await sendPushToUser(
                   ayUser._id.toString(),
-                  'Nuevo pasajero',
-                  `${passengerName} ha sido agregado al viaje`,
+                  '👤 Nuevo pasajero en el viaje',
+                  `${passengerName} → ${destino} | Asientos: ${passengerDoc?.asientos?.join(', ') || 'Sin asignar'}`,
                   { viajeId: viaje._id.toString(), type: 'passenger_added' }
                 );
               }
@@ -550,6 +571,8 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
+    const seatChoferRoom = typeof viajePopulado?.choferId === 'object' ? viajePopulado?.choferId?._id?.toString() : viajePopulado?.choferId?.toString();
+    if (seatChoferRoom) getIO().to(`driver:${seatChoferRoom}`).emit('trip:updated', viajePopulado);
 
     res.json({ message: 'Asiento(s) asignado(s)', viaje: viajePopulado });
   } catch (error) {
@@ -598,7 +621,31 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
+    emitTripUpdate(viajePopulado);
+
+    // Notify admin about status change
+    try {
+      const nombrePax = (pasajero?.pasajeroId as any)?.nombre || 'Pasajero';
+      const estadoLabels: Record<string, string> = {
+        reservado: '📌 Reservado',
+        en_terminal: '🏢 En terminal',
+        abordado: '🚌 Abordado',
+        no_llegado: '❌ No llegó',
+        bajado: '✅ Bajado',
+        en_camino: '🚗 En camino',
+      };
+      const admins = await User.find({ rol: { $in: ['admin', 'super-admin'] } }).select('_id');
+      for (const admin of admins) {
+        await sendPushToUser(
+          admin._id.toString(),
+          `${estadoLabels[estado] || '🔄 Estado actualizado'}`,
+          `${nombrePax} → ${estado} en viaje`,
+          { viajeId: viaje._id.toString(), type: 'passenger_status' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Error sending status push:', pushErr);
+    }
 
     res.json({ message: 'Estado actualizado', viaje: viajePopulado });
   } catch (error) {
@@ -646,7 +693,30 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
+    emitTripUpdate(viajePopulado);
+
+    // Notify admin about passenger drop-off
+    try {
+      const pasajeroInfo = viajePopulado?.pasajeros?.find((p: any) =>
+        p._id?.toString() === req.params.pid || p.pasajeroId?._id?.toString() === req.params.pid
+      );
+      const nombrePax = (pasajeroInfo?.pasajeroId as any)?.nombre || 'Pasajero';
+      const monto = pasajeroInfo?.montoPagado || montoCobrado || 0;
+      const metodo = pasajeroInfo?.metodoPago || metodoPago || 'pendiente';
+
+      // Notify admin
+      const admins = await User.find({ rol: { $in: ['admin', 'super-admin'] } }).select('_id');
+      for (const admin of admins) {
+        await sendPushToUser(
+          admin._id.toString(),
+          '✅ Pasajero bajado',
+          `${nombrePax} bajó en ${paradaBajada || 'parada'} | S/.${monto} (${metodo})`,
+          { viajeId: viaje._id.toString(), type: 'passenger_dropoff' }
+        );
+      }
+    } catch (pushErr) {
+      console.error('Error sending dropoff push:', pushErr);
+    }
 
     res.json({ message: 'Bajada registrada', viaje: viajePopulado });
   } catch (error) {
@@ -690,7 +760,7 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
       .populate('pasajeros.pasajeroId', 'nombre dni telefono')
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
-    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:updated', viajePopulado);
+    emitTripUpdate(viajePopulado);
 
     res.json({ message: 'Pasajero marcado como no llegado', viaje: viajePopulado });
   } catch (error) {
