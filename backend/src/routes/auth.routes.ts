@@ -17,10 +17,16 @@ router.post('/login', async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      throw new AppError('Email y contraseña son requeridos', 400);
+      throw new AppError('Email/DNI y contraseña son requeridos', 400);
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    // Accept email or DNI
+    const isDni = /^\d{8}$/.test(email);
+    const query = isDni
+      ? { dni: email.trim() }
+      : { email: email.toLowerCase().trim() };
+
+    const user = await User.findOne(query);
     if (!user) {
       throw new AppError('Credenciales incorrectas', 401);
     }
@@ -56,6 +62,7 @@ router.post('/login', async (req: Request, res: Response) => {
         _id: user._id,
         email: user.email,
         nombre: user.nombre,
+        dni: user.dni,
         rol: user.rol,
       },
     });
@@ -71,7 +78,7 @@ router.post('/login', async (req: Request, res: Response) => {
 // POST /api/auth/register — solo super-admin puede crear usuarios
 router.post('/register', authenticate, requireRole('super-admin'), async (req: Request, res: Response) => {
   try {
-    const { email, password, nombre, rol, adminId } = req.body;
+    const { email, password, nombre, rol, adminId, dni } = req.body;
 
     if (!email || !password || !nombre) {
       throw new AppError('Email, contraseña y nombre son requeridos', 400);
@@ -82,12 +89,20 @@ router.post('/register', authenticate, requireRole('super-admin'), async (req: R
       throw new AppError('El email ya está registrado', 409);
     }
 
+    if (dni) {
+      const existingDni = await User.findOne({ dni: dni.trim() });
+      if (existingDni) {
+        throw new AppError('El DNI ya está registrado', 409);
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       email: email.toLowerCase(),
       password: hashedPassword,
       nombre,
+      dni: dni?.trim() || undefined,
       rol: rol || 'admin',
       adminId: adminId || null,
       activo: true,

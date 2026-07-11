@@ -83,7 +83,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // POST /api/choferes - Crear usuario (User + Driver si es chofer)
 router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { email, password, nombre, rol, licencia, telefono } = req.body;
+    const { email, password, nombre, rol, licencia, telefono, dni } = req.body;
 
     if (!email || !password || !nombre || !rol) {
       throw new AppError('email, password, nombre y rol son requeridos', 400);
@@ -98,6 +98,14 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
     const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       throw new AppError('El email ya está registrado', 409);
+    }
+
+    // Verificar DNI único
+    if (dni) {
+      const existingDni = await User.findOne({ dni: dni.trim() });
+      if (existingDni) {
+        throw new AppError('El DNI ya está registrado', 409);
+      }
     }
 
     // Verificar licencia única (solo para choferes)
@@ -116,6 +124,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       email: email.toLowerCase(),
       password: hashedPassword,
       nombre,
+      dni: dni?.trim() || undefined,
       rol,
       adminId: req.user?._id || null,
       activo: true,

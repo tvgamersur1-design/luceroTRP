@@ -4,6 +4,7 @@ export interface IUser extends Document {
   email: string;
   password: string;
   nombre: string;
+  dni?: string;
   rol: 'super-admin' | 'admin' | 'chofer';
   adminId?: mongoose.Types.ObjectId;
   activo: boolean;
@@ -17,6 +18,7 @@ const UserSchema = new Schema<IUser>(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     password: { type: String, required: true },
     nombre: { type: String, required: true, trim: true },
+    dni: { type: String, trim: true, sparse: true },
     rol: { type: String, enum: ['super-admin', 'admin', 'chofer'], required: true },
     adminId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     activo: { type: Boolean, default: true },
