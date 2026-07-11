@@ -314,6 +314,14 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
       throw new AppError('No tienes permiso para iniciar este viaje', 403);
     }
 
+    const viajeActual = await Trip.findById(req.params.id);
+    if (!viajeActual) {
+      throw new AppError('Viaje no encontrado', 404);
+    }
+    if (viajeActual.estado !== 'planificado') {
+      throw new AppError(`No se puede iniciar un viaje en estado "${viajeActual.estado}"`, 400);
+    }
+
     const viaje = await Trip.findByIdAndUpdate(
       req.params.id,
       { $set: { estado: 'en_transito', fechaInicioReal: new Date() } },
