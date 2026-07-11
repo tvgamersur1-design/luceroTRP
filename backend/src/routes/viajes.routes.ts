@@ -214,13 +214,13 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       const driverUser = driver?.userId as any;
       const ruta = viajePopulado?.rutaId as any;
       const vehiculo = viajePopulado?.vehiculoId as any;
-      const fechaLabel = new Date(fechaInicio).toLocaleDateString();
+      const fechaLabel = new Date(fechaInicio).toLocaleDateString('es-PE');
       const horaLabel = horaSalida || new Date(fechaInicio).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
       if (driverUser?._id && viajePopulado) {
         await sendPushToUser(
           driverUser._id.toString(),
-          '🚗 Nuevo viaje asignado',
-          `Ruta: ${ruta?.nombre || 'Sin ruta'} | ${vehiculo?.placa || ''} | ${fechaLabel} ${horaLabel}`,
+          '🚗 Viaje asignado',
+          `${ruta?.nombre || 'Ruta'} • ${vehiculo?.placa || ''} • ${fechaLabel} ${horaLabel}`,
           { viajeId: viaje._id.toString(), type: 'trip_assigned' }
         );
       }
@@ -234,7 +234,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
               await sendPushToUser(
                 ayUser._id.toString(),
                 '🚗 Te asignaron como ayudante',
-                `Ruta: ${ruta?.nombre || 'Sin ruta'} | ${fechaLabel} ${horaLabel}`,
+                `${ruta?.nombre || 'Ruta'} • ${vehiculo?.placa || ''} • ${fechaLabel} ${horaLabel}`,
                 { viajeId: viaje._id.toString(), type: 'trip_assigned' }
               );
             }
@@ -479,42 +479,77 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     const addChoferRoom = addChoferObj?._id?.toString() || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
     if (addChoferRoom) getIO().to(`driver:${addChoferRoom}`).emit('trip:updated', viaje);
 
-    // Send push notification to the driver about new passenger
+    // Send push notification — notify everyone EXCEPT who added the passenger
     try {
-      const choferUserId = (viaje.choferId as any)?.userId || viaje.choferId;
+      const addedByUserId = req.user?._id?.toString();
       const passengerDoc = viaje.pasajeros[viaje.pasajeros.length - 1];
       const passengerName = (passengerDoc?.pasajeroId as any)?.nombre || 'Pasajero';
-      const destino = passengerDoc?.destino || 'destino no especificado';
-      if (choferUserId) {
-        await sendPushToUser(
-          choferUserId.toString(),
-          '👤 Nuevo pasajero en tu viaje',
-          `${passengerName} → ${destino} | Asientos: ${passengerDoc?.asientos?.join(', ') || 'Sin asignar'}`,
-          { viajeId: viaje._id.toString(), type: 'passenger_added' }
-        );
+      const destino = passengerDoc?.destino || 'sin destino';
+      const asientos = passengerDoc?.asientos?.join(', ') || 'sin asiento';
+
+      // Determine who added this passenger (name for the message)
+      const addedByUser = await User.findById(addedByUserId).select('nombre rol');
+      const addedByName = addedByUser?.nombre || 'Alguien';
+      const addedByRol = addedByUser?.rol || '';
+
+      // Build the message
+      const title = '👤 Pasajero agregado';
+      let body = '';
+
+      if (addedByRol === 'chofer') {
+        body = `${addedByName} agregó a ${passengerName} → ${destino} (${asientos})`;
+      } else if (addedByRol === 'admin' || addedByRol === 'super-admin') {
+        body = `Admin agregó a ${passengerName} → ${destino} (${asientos})`;
+      } else {
+        body = `${addedByName} agregó a ${passengerName} → ${destino} (${asientos})`;
       }
-      // Notify ayudantes (assistants) about new passenger
+
+      // Collect all user IDs to notify (chofer + ayudantes + admins, minus who added)
+      const userIdsToNotify: string[] = [];
+
+      // 1. Notify the chofer (if not the one who added)
+      const choferUserId = (viaje.choferId as any)?.userId?._id?.toString()
+        || (viaje.choferId as any)?.userId?.toString()
+        || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
+      if (choferUserId && choferUserId !== addedByUserId) {
+        userIdsToNotify.push(choferUserId);
+      }
+
+      // 2. Notify ayudantes (if not the one who added)
       if (viaje.ayudantes && viaje.ayudantes.length > 0) {
         for (const ay of viaje.ayudantes) {
           try {
             const ayDriverId = (ay.choferId as any)?._id || ay.choferId;
             if (ayDriverId) {
-              const ayDriver = await Driver.findById(ayDriverId).populate('userId', 'nombre');
-              const ayUser = ayDriver?.userId as any;
-              if (ayUser?._id) {
-                await sendPushToUser(
-                  ayUser._id.toString(),
-                  '👤 Nuevo pasajero en el viaje',
-                  `${passengerName} → ${destino} | Asientos: ${passengerDoc?.asientos?.join(', ') || 'Sin asignar'}`,
-                  { viajeId: viaje._id.toString(), type: 'passenger_added' }
-                );
+              const ayDriver = await Driver.findById(ayDriverId).populate('userId', '_id');
+              const ayUserId = (ayDriver?.userId as any)?._id?.toString() || (ayDriver?.userId as any)?.toString();
+              if (ayUserId && ayUserId !== addedByUserId) {
+                userIdsToNotify.push(ayUserId);
               }
             }
-          } catch (ayErr) {
-            console.error('Error sending push to ayudante:', ayErr);
-          }
+          } catch { /* skip */ }
         }
       }
+
+      // 3. Notify all admins (if not the one who added)
+      const admins = await User.find({ rol: { $in: ['admin', 'super-admin'] } }).select('_id');
+      for (const admin of admins) {
+        const adminId = admin._id.toString();
+        if (adminId !== addedByUserId) {
+          userIdsToNotify.push(adminId);
+        }
+      }
+
+      // Send push to all collected users
+      const uniqueIds = [...new Set(userIdsToNotify)];
+      for (const uid of uniqueIds) {
+        await sendPushToUser(uid, title, body, {
+          viajeId: viaje._id.toString(),
+          type: 'passenger_added',
+        });
+      }
+
+      console.log(`[Push] Passenger added: notified ${uniqueIds.length} users (skipped ${addedByName})`);
     } catch (pushErr) {
       console.error('Error sending passenger push:', pushErr);
     }
@@ -626,8 +661,9 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
 
     emitTripUpdate(viajePopulado);
 
-    // Notify admin about status change
+    // Notify everyone about status change (except who did it)
     try {
+      const statusByUserId = req.user?._id?.toString();
       const nombrePax = (pasajero?.pasajeroId as any)?.nombre || 'Pasajero';
       const estadoLabels: Record<string, string> = {
         reservado: '📌 Reservado',
@@ -637,14 +673,42 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
         bajado: '✅ Bajado',
         en_camino: '🚗 En camino',
       };
+
+      const statusByUser = await User.findById(statusByUserId).select('nombre rol');
+      const statusByName = statusByUser?.nombre || 'Alguien';
+
+      const title = `${estadoLabels[estado] || '🔄 Estado'}`;
+      const body = `${statusByName} marcó a ${nombrePax} como "${estado}"`;
+
+      const userIdsToNotify: string[] = [];
+
+      // Notify chofer
+      const statusChoferUserId = (viaje.choferId as any)?.userId?._id?.toString()
+        || (viaje.choferId as any)?.userId?.toString()
+        || '';
+      if (statusChoferUserId && statusChoferUserId !== statusByUserId) userIdsToNotify.push(statusChoferUserId);
+
+      // Notify ayudantes
+      if (viaje.ayudantes && viaje.ayudantes.length > 0) {
+        for (const ay of viaje.ayudantes) {
+          try {
+            const ayDriverId = (ay.choferId as any)?._id || ay.choferId;
+            const ayDriver = await Driver.findById(ayDriverId).populate('userId', '_id');
+            const ayUserId = (ayDriver?.userId as any)?._id?.toString();
+            if (ayUserId && ayUserId !== statusByUserId) userIdsToNotify.push(ayUserId);
+          } catch { /* skip */ }
+        }
+      }
+
+      // Notify admins
       const admins = await User.find({ rol: { $in: ['admin', 'super-admin'] } }).select('_id');
       for (const admin of admins) {
-        await sendPushToUser(
-          admin._id.toString(),
-          `${estadoLabels[estado] || '🔄 Estado actualizado'}`,
-          `${nombrePax} → ${estado} en viaje`,
-          { viajeId: viaje._id.toString(), type: 'passenger_status' }
-        );
+        if (admin._id.toString() !== statusByUserId) userIdsToNotify.push(admin._id.toString());
+      }
+
+      const uniqueIds = [...new Set(userIdsToNotify)];
+      for (const uid of uniqueIds) {
+        await sendPushToUser(uid, title, body, { viajeId: viaje._id.toString(), type: 'passenger_status' });
       }
     } catch (pushErr) {
       console.error('Error sending status push:', pushErr);
@@ -698,24 +762,52 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
 
     emitTripUpdate(viajePopulado);
 
-    // Notify admin about passenger drop-off
+    // Notify everyone about passenger drop-off (except who did it)
     try {
+      const dropByUserId = req.user?._id?.toString();
       const pasajeroInfo = viajePopulado?.pasajeros?.find((p: any) =>
         p._id?.toString() === req.params.pid || p.pasajeroId?._id?.toString() === req.params.pid
       );
       const nombrePax = (pasajeroInfo?.pasajeroId as any)?.nombre || 'Pasajero';
       const monto = pasajeroInfo?.montoPagado || montoCobrado || 0;
       const metodo = pasajeroInfo?.metodoPago || metodoPago || 'pendiente';
+      const parada = paradaBajada || pasajero.destino || 'parada';
 
-      // Notify admin
+      const dropByUser = await User.findById(dropByUserId).select('nombre rol');
+      const dropByName = dropByUser?.nombre || 'Alguien';
+
+      const title = '✅ Pasajero bajado';
+      const body = `${dropByName} dejó a ${nombrePax} en ${parada} • S/.${monto} (${metodo})`;
+
+      const userIdsToNotify: string[] = [];
+
+      // Notify chofer
+      const dropChoferUserId = (viaje.choferId as any)?.userId?._id?.toString()
+        || (viaje.choferId as any)?.userId?.toString()
+        || '';
+      if (dropChoferUserId && dropChoferUserId !== dropByUserId) userIdsToNotify.push(dropChoferUserId);
+
+      // Notify ayudantes
+      if (viaje.ayudantes && viaje.ayudantes.length > 0) {
+        for (const ay of viaje.ayudantes) {
+          try {
+            const ayDriverId = (ay.choferId as any)?._id || ay.choferId;
+            const ayDriver = await Driver.findById(ayDriverId).populate('userId', '_id');
+            const ayUserId = (ayDriver?.userId as any)?._id?.toString();
+            if (ayUserId && ayUserId !== dropByUserId) userIdsToNotify.push(ayUserId);
+          } catch { /* skip */ }
+        }
+      }
+
+      // Notify admins
       const admins = await User.find({ rol: { $in: ['admin', 'super-admin'] } }).select('_id');
       for (const admin of admins) {
-        await sendPushToUser(
-          admin._id.toString(),
-          '✅ Pasajero bajado',
-          `${nombrePax} bajó en ${paradaBajada || 'parada'} | S/.${monto} (${metodo})`,
-          { viajeId: viaje._id.toString(), type: 'passenger_dropoff' }
-        );
+        if (admin._id.toString() !== dropByUserId) userIdsToNotify.push(admin._id.toString());
+      }
+
+      const uniqueIds = [...new Set(userIdsToNotify)];
+      for (const uid of uniqueIds) {
+        await sendPushToUser(uid, title, body, { viajeId: viaje._id.toString(), type: 'passenger_dropoff' });
       }
     } catch (pushErr) {
       console.error('Error sending dropoff push:', pushErr);
