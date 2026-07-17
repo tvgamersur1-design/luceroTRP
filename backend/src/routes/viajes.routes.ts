@@ -649,6 +649,20 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
     const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
 
+    const TRANSICIONES: Record<string, string[]> = {
+      reservado: ['en_terminal', 'en_camino', 'no_llegado'],
+      en_terminal: ['abordado', 'no_llegado'],
+      en_camino: ['abordado', 'no_llegado'],
+      abordado: ['bajado'],
+      no_llegado: [],
+      bajado: [],
+    };
+
+    const permitidos = TRANSICIONES[pasajero.estado] || [];
+    if (!permitidos.includes(estado)) {
+      throw new AppError(`No se puede cambiar de "${pasajero.estado}" a "${estado}"`, 400);
+    }
+
     pasajero.estado = estado;
     // Liberar asiento si el pasajero no llego
     if (estado === 'no_llegado') {
