@@ -137,6 +137,22 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
           case 'create':
           case 'update':
             if (isLocalId) {
+              // P1 FIX: Dedup — if a passenger with the same DNI exists, reuse it
+              if (tabla === 'pasajeros' || tabla === 'passengers') {
+                const dni = (datos as any)?.dni;
+                if (dni) {
+                  const existingPassenger = await Passenger.findOne({ dni }).lean();
+                  if (existingPassenger) {
+                    results.push({
+                      tabla,
+                      registroId,
+                      status: 'ok',
+                      newId: (existingPassenger as any)._id.toString(),
+                    });
+                    continue;
+                  }
+                }
+              }
               // Create new document with generated ObjectId
               const doc = new modelEntry.model({ ...datos, _id: mongoId, updatedAt: new Date() });
               await doc.save();
