@@ -28,6 +28,7 @@ import { pasajerosRoutes } from './routes/pasajeros.routes';
 import { locationRoutes } from './routes/location.routes';
 import { horariosRoutes } from './routes/horarios.routes';
 import { notificationsRoutes } from './routes/notifications.routes';
+import { errorsRoutes } from './routes/errors.routes';
 import { setupWebSocket } from './websocket/handlers';
 import { setIO } from './websocket/socket';
 import { User } from './models/User';
@@ -92,8 +93,9 @@ const io = new Server(httpServer, {
     origin: true,
     methods: ['GET', 'POST'],
   },
-  transports: ['polling'],
-  allowUpgrades: false,
+  // P4 FIX: Enable WebSocket transport for lower latency
+  transports: ['polling', 'websocket'],
+  allowUpgrades: true,
   pingInterval: 25000,
   pingTimeout: 60000,
   allowEIO3: true,
@@ -161,6 +163,7 @@ app.use('/api/pasajeros', pasajerosRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/horarios', horariosRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/errors', errorsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

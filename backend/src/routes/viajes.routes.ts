@@ -340,6 +340,10 @@ router.put('/:id/iniciar', authenticate, requireRole('super-admin', 'admin', 'ch
     const choferRoomId = choferObj?._id?.toString() || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
     if (choferRoomId) getIO().to(`driver:${choferRoomId}`).emit('trip:updated', viaje);
 
+    // P2 FIX: Emit trip:started so frontend can show real-time notification
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:started', { viajeId: viaje._id });
+    if (choferRoomId) getIO().to(`driver:${choferRoomId}`).emit('trip:started', { viajeId: viaje._id });
+
     res.json({ message: 'Viaje iniciado', viaje });
   } catch (error) {
     if (error instanceof AppError) {
@@ -487,6 +491,17 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
     const addChoferRoom = addChoferObj?._id?.toString() || (typeof viaje.choferId === 'string' ? viaje.choferId : '');
     if (addChoferRoom) getIO().to(`driver:${addChoferRoom}`).emit('trip:updated', viaje);
 
+    // P1 FIX: Emit granular passenger event for real-time seat map updates
+    const newPassenger = viaje.pasajeros[viaje.pasajeros.length - 1];
+    getIO().to('admins').to(`trip:${viaje._id}`).emit('trip:passenger-added', {
+      viajeId: viaje._id,
+      pasajero: newPassenger,
+    });
+    if (addChoferRoom) getIO().to(`driver:${addChoferRoom}`).emit('trip:passenger-added', {
+      viajeId: viaje._id,
+      pasajero: newPassenger,
+    });
+
     // Send push notification — notify everyone EXCEPT who added the passenger
     try {
       const addedByUserId = req.user?._id?.toString();
@@ -620,6 +635,18 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
     const seatChoferRoom = seatChoferObj?._id?.toString() || (typeof viajePopulado?.choferId === 'string' ? viajePopulado?.choferId : '');
     if (seatChoferRoom) getIO().to(`driver:${seatChoferRoom}`).emit('trip:updated', viajePopulado);
 
+    // P1 FIX: Emit granular passenger seat change event
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:passenger-seat-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      asientos,
+    });
+    if (seatChoferRoom) getIO().to(`driver:${seatChoferRoom}`).emit('trip:passenger-seat-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      asientos,
+    });
+
     res.json({ message: 'Asiento(s) asignado(s)', viaje: viajePopulado });
   } catch (error) {
     if (error instanceof AppError) {
@@ -682,6 +709,22 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     emitTripUpdate(viajePopulado);
+
+    // P1 FIX: Emit granular passenger state change event
+    const estadoChoferObj = viajePopulado?.choferId as any;
+    const estadoChoferRoom = estadoChoferObj?._id?.toString() || (typeof viajePopulado?.choferId === 'string' ? viajePopulado?.choferId : '');
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado,
+      nombre: (pasajero?.pasajeroId as any)?.nombre,
+    });
+    if (estadoChoferRoom) getIO().to(`driver:${estadoChoferRoom}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado,
+      nombre: (pasajero?.pasajeroId as any)?.nombre,
+    });
 
     // Notify everyone about status change (except who did it)
     try {
@@ -784,6 +827,23 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
 
     emitTripUpdate(viajePopulado);
 
+    // P1 FIX: Emit granular passenger state change for dropoff
+    const dropChoferObj = viajePopulado?.choferId as any;
+    const dropChoferRoom = dropChoferObj?._id?.toString() || (typeof viajePopulado?.choferId === 'string' ? viajePopulado?.choferId : '');
+    const dropNombrePax = (pasajero?.pasajeroId as any)?.nombre || 'Pasajero';
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado: 'bajado',
+      nombre: dropNombrePax,
+    });
+    if (dropChoferRoom) getIO().to(`driver:${dropChoferRoom}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado: 'bajado',
+      nombre: dropNombrePax,
+    });
+
     // Notify everyone about passenger drop-off (except who did it)
     try {
       const dropByUserId = req.user?._id?.toString();
@@ -878,6 +938,22 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
       .populate('pasajeros.tarifaId', 'nombre precio origenTramo destinoTramo');
 
     emitTripUpdate(viajePopulado);
+
+    // P1 FIX: Emit granular passenger state change for no-llegado
+    const nlChoferObj = viajePopulado?.choferId as any;
+    const nlChoferRoom = nlChoferObj?._id?.toString() || (typeof viajePopulado?.choferId === 'string' ? viajePopulado?.choferId : '');
+    getIO().to('admins').to(`trip:${viajePopulado?._id}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado: 'no_llegado',
+      nombre: (pasajero?.pasajeroId as any)?.nombre,
+    });
+    if (nlChoferRoom) getIO().to(`driver:${nlChoferRoom}`).emit('trip:passenger-state-changed', {
+      viajeId: viajePopulado?._id,
+      pasajeroId: req.params.pid,
+      estado: 'no_llegado',
+      nombre: (pasajero?.pasajeroId as any)?.nombre,
+    });
 
     res.json({ message: 'Pasajero marcado como no llegado', viaje: viajePopulado });
   } catch (error) {

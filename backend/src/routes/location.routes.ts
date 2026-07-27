@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { Location } from '../models/Location';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -24,6 +25,18 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
       direccion,
       timestamp: new Date(),
     });
+
+    // P1 FIX: Emit location update via socket for real-time map tracking
+    try {
+      getIO().emit('location:update', {
+        choferId: req.user?._id,
+        lat,
+        lng,
+        velocidad,
+        direccion,
+        timestamp: new Date(),
+      });
+    } catch { /* non-critical */ }
 
     res.status(201).json(location);
   } catch (error) {

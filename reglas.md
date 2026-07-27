@@ -282,3 +282,95 @@ await rutasAPI.delete(id);             // sin executeOfflineAction
 - Socket.IO actualiza el store en tiempo real
 - Push notification informa al usuario cuando la app está en background
 - Siempre emitir ambos
+
+---
+
+## Reglas de Tiempo de Viaje
+
+### Ventana de Inicio
+- Un viaje puede iniciarse **únicamente** entre los **30 minutos anteriores** a la `fechaInicio` y **hasta 12 horas después** de la misma.
+- Si el viaje está en estado `planificado` y el tiempo no ha llegado: se muestra mensaje "El botón de iniciar estará disponible 30 minutos antes de la hora de salida".
+- Si el viaje está en estado `planificado` y pasó la ventana de 12 horas: se muestra advertencia "Este viaje no fue iniciado" con opciones de iniciar o cancelar.
+
+### Recordatorios Automáticos
+- **No Iniciado:** Si un viaje está `planificado` y pasaron más de 30 minutos desde `fechaInicio`, se muestra un toast cada 10 minutos recordando "¿Iniciar o cancelar viaje?".
+- **En Tránsito Largo:** Si un viaje está `en_transito` y pasaron más de 5 horas desde `fechaInicio`, se muestra un toast cada 15 minutos recordando "Recuerda completar el viaje cuando llegues".
+
+### Estados de Viaje
+| Estado | Descripción |
+|--------|-------------|
+| `planificado` | Viaje creado, esperando iniciar |
+| `en_transito` | Viaje en curso, chofer en ruta |
+| `completado` | Viaje finalizado, todos los pasajeros procesados |
+| `cancelado` | Viaje cancelado por admin |
+| `no_iniciado` | Viaje no fue iniciado en la ventana permitida |
+
+---
+
+## Reglas de Mapa de Asientos
+
+### Estados de Asiento
+| Estado | Color | Descripción |
+|--------|-------|-------------|
+| Libre | Verde (#22C55E) | Sin pasajero asignado |
+| Reservado | Ámbar (#F59E0B) | Pasajero asignado, no ha subido |
+| Ocupado (Abordado) | Rojo (#EF4444) | Pasajero subido al bus |
+| En Terminal | Azul (#3B82F6) | Pasajero en terminal, esperando subir |
+| En Camino | Púrpura (#8B5CF6) | Pasajero recogido en ruta |
+| No Llegó | Gris (#6B7280) | Pasajero no se presentó |
+
+### Interacción con Asientos
+- Al tocar un asiento en modo vista, se abre un **modal flotante** (bottom sheet) con:
+  - Información del estado actual
+  - Datos del pasajero (si lo hay)
+  - **Acciones contextuales** según el estado:
+    - Libre → "Reservar" + "Agregar Pasajero"
+    - Reservado → "Confirmar Subida" + "Cancelar Reserva"
+    - Abordado → "Registrar Bajada"
+    - En Terminal → "Subir al Bus"
+    - En Camino → "Recoger"
+    - No Llegó → "Reasignar"
+
+### Permisos de Acción
+- Las acciones en el mapa de asientos pueden ser realizadas por:
+  - **Chofer** asignado al viaje
+  - **Ayudantes** del viaje
+  - **Admin** / **Super-Admin**
+
+---
+
+## Eventos Socket.IO de Pasajeros
+
+### Eventos Específicos
+| Evento | Descripción | Datos |
+|--------|-------------|-------|
+| `trip:passenger-added` | Nuevo pasajero agregado al viaje | `{ viajeId, pasajero }` |
+| `trip:passenger-state-changed` | Estado de pasajero cambiado | `{ viajeId, pasajeroId, estado, nombre? }` |
+| `trip:passenger-seat-changed` | Asiento de pasajero cambiado | `{ viajeId, pasajeroId, asientos }` |
+
+### Eventos Generales de Viaje
+| Evento | Descripción |
+|--------|-------------|
+| `trip:created` | Nuevo viaje creado |
+| `trip:updated` | Viaje actualizado (cualquier cambio) |
+| `trip:deleted` | Viaje eliminado |
+| `trip:started` | Viaje iniciado (estado → en_transito) |
+
+### Comportamiento
+- Todos los clientes conectados al mismo viaje reciben los eventos y actualizan su UI en tiempo real.
+- Los eventos de pasajero son más granulares que `trip:updated` para permitir actualizaciones parciales.
+- El mapa de asientos se actualiza instantáneamente cuando cambia el estado de un pasajero.
+
+---
+
+## Reglas de Sincronización Offline
+
+### Flujo de Datos
+1. **Acción del usuario** → `executeOfflineAction()`
+2. **Si online:** Llamada API → Backend MongoDB → Socket.IO a otros clientes → Respuesta → SQLite + Store
+3. **Si offline:** Store + SQLite → Cola de sincronización → Sync automático al reconectar
+
+### Conflictos
+- **Último en escribir gana.** No hay merge de campos.
+- El `sync-engine` procesa la cola en orden FIFO.
+- Los IDs temporales (`local-*`) se reemplazan por IDs del servidor tras sincronización.
