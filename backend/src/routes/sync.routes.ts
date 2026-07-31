@@ -11,6 +11,7 @@ import { Fare } from '../models/Fare';
 import { Driver } from '../models/Driver';
 import { Vehicle } from '../models/Vehicle';
 import { AuditLog } from '../models/AuditLog';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -209,6 +210,42 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
               error: `Accion '${accion}' no soportada`,
             });
             continue;
+        }
+
+        // Emit socket event for real-time propagation
+        try {
+          const io = getIO();
+          const tablaKey = tabla.toLowerCase();
+          const entityName = isLocalId ? mongoId : registroId;
+
+          if (tablaKey === 'trips' || tablaKey === 'viajes') {
+            const tripData = await Trip.findById(entityName).populate('choferId').lean();
+            if (tripData) {
+              io.to('admins').emit('trip:updated', tripData);
+              const choferField = (tripData as any).choferId;
+              const choferId = typeof choferField === 'object' && choferField !== null
+                ? choferField._id?.toString()
+                : choferField?.toString();
+              if (choferId) {
+                io.to(`driver:${choferId}`).emit('trip:updated', tripData);
+              }
+            }
+          } else if (['routes', 'rutas'].includes(tablaKey)) {
+            const doc = await Route.findById(entityName).lean();
+            if (doc) io.emit('route:created', doc);
+          } else if (['fares', 'tarifas'].includes(tablaKey)) {
+            const doc = await Fare.findById(entityName).lean();
+            if (doc) io.emit('fare:created', doc);
+          } else if (['vehicles', 'vehiculos'].includes(tablaKey)) {
+            const doc = await Vehicle.findById(entityName).lean();
+            if (doc) io.emit('vehicle:created', doc);
+          } else if (['drivers', 'choferes'].includes(tablaKey)) {
+            const doc = await Driver.findById(entityName).lean();
+            if (doc) io.emit('driver:created', doc);
+          }
+        } catch (socketErr) {
+          // Socket emission failure is non-critical — don't block sync
+          console.error('[Sync] Socket emission error:', socketErr);
         }
 
         if (req.user) {

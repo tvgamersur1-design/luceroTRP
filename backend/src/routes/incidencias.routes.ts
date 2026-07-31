@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Incident } from '../models/Incident';
 import { AppError } from '../middleware/errorHandler';
+import { getIO } from '../websocket/socket';
 
 const router = Router();
 
@@ -80,6 +81,14 @@ router.post('/', authenticate, requireRole('super-admin', 'admin', 'chofer'), as
       reportadoPor: req.user?._id,
     });
 
+    // Emit socket event for real-time propagation
+    try {
+      const io = getIO();
+      io.emit('incidencia:created', incidencia);
+    } catch (e) {
+      console.error('[Incidencias] Socket emission error:', e);
+    }
+
     res.status(201).json(incidencia);
   } catch (error) {
     if (error instanceof AppError) {
@@ -100,6 +109,15 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!incidencia) {
       throw new AppError('Incidencia no encontrada', 404);
     }
+
+    // Emit socket event for real-time propagation
+    try {
+      const io = getIO();
+      io.emit('incidencia:updated', incidencia);
+    } catch (e) {
+      console.error('[Incidencias] Socket emission error:', e);
+    }
+
     res.json(incidencia);
   } catch (error) {
     if (error instanceof AppError) {
@@ -130,6 +148,15 @@ router.put('/:id/resolver', authenticate, requireRole('super-admin', 'admin'), a
     if (!incidencia) {
       throw new AppError('Incidencia no encontrada', 404);
     }
+
+    // Emit socket event for real-time propagation
+    try {
+      const io = getIO();
+      io.emit('incidencia:resuelta', incidencia);
+    } catch (e) {
+      console.error('[Incidencias] Socket emission error:', e);
+    }
+
     res.json({ message: 'Incidencia resuelta', incidencia });
   } catch (error) {
     if (error instanceof AppError) {
