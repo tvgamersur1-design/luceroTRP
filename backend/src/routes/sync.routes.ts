@@ -175,11 +175,43 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
                   continue;
                 }
               }
-              await modelEntry.model.findOneAndUpdate(
-                { _id: registroId },
-                { $set: { ...datos, updatedAt: new Date() } },
-                { upsert: true, new: true }
-              );
+              // Detect if this is a passenger addition to a trip
+              const isPassengerAdd = datos && typeof datos === 'object' && 'pasajeroId' in datos;
+              const tablaKey = tabla.toLowerCase();
+              const isTrip = tablaKey === 'trips' || tablaKey === 'viajes';
+
+              if (isTrip && isPassengerAdd) {
+                // Use $push to add passenger to trip's pasajeros array
+                const { pasajeroId, asientos, estado, destino, tarifaId, metodoPago, montoPagado, direccionRecogida, referenciaRecogida } = datos as Record<string, unknown>;
+                await modelEntry.model.findByIdAndUpdate(
+                  registroId,
+                  {
+                    $push: {
+                      pasajeros: {
+                        pasajeroId,
+                        asientos,
+                        estado,
+                        destino,
+                        tarifaId,
+                        metodoPago,
+                        montoPagado,
+                        direccionRecogida,
+                        referenciaRecogida,
+                        timestamp: new Date(),
+                      }
+                    },
+                    $set: { updatedAt: new Date() },
+                    $inc: { ingresoTotal: Number(montoPagado) || 0 },
+                  },
+                  { new: true }
+                );
+              } else {
+                await modelEntry.model.findOneAndUpdate(
+                  { _id: registroId },
+                  { $set: { ...datos, updatedAt: new Date() } },
+                  { upsert: true, new: true }
+                );
+              }
             }
             break;
           case 'delete':
