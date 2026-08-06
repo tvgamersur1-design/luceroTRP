@@ -15,3 +15,7 @@ backend/logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Firebase Admin SDK (NUNCA subir al repo)
+*-firebase-adminsdk-*.json
+*.service-account.json

@@ -3,6 +3,28 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
+// Startup guard: prevent running with default JWT secrets in production
+const isProduction = process.env.NODE_ENV === 'production';
+const defaultSecrets = ['default-secret-change-me', 'default-refresh-secret', 'tu-secreto-aqui-cambiar-en-produccion', 'tu-refresh-secreto-aqui'];
+
+if (isProduction) {
+  const jwtSecret = process.env.JWT_SECRET || '';
+  const refreshSecret = process.env.JWT_REFRESH_SECRET || '';
+
+  if (!jwtSecret || defaultSecrets.includes(jwtSecret)) {
+    console.error('[FATAL] JWT_SECRET no está configurado o usa el valor predeterminado.');
+    console.error('[FATAL] Genera un secret aleatorio de 32+ bytes y configúralo en Render.');
+    console.error('[FATAL] Ejemplo: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"');
+    process.exit(1);
+  }
+
+  if (!refreshSecret || defaultSecrets.includes(refreshSecret)) {
+    console.error('[FATAL] JWT_REFRESH_SECRET no está configurado o usa el valor predeterminado.');
+    console.error('[FATAL] Genera un secret aleatorio de 32+ bytes y configúralo en Render.');
+    process.exit(1);
+  }
+}
+
 export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),

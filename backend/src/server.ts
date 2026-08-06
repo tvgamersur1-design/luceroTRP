@@ -174,27 +174,29 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Debug: test MongoDB connection
-app.get('/api/debug/db', async (req, res) => {
-  try {
-    const mongoose = await import('mongoose');
-    const state = mongoose.default.connection.readyState;
-    const stateMap: Record<number, string> = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting',
-    };
-    const userCount = await User.countDocuments();
-    res.json({
-      connectionState: stateMap[state] || 'unknown',
-      userCount,
-      mongoUri: config.mongodb.uri ? 'set' : 'NOT SET',
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message, stack: error.stack });
-  }
-});
+// Debug: test MongoDB connection (development only)
+if (config.env !== 'production') {
+  app.get('/api/debug/db', async (req, res) => {
+    try {
+      const mongoose = await import('mongoose');
+      const state = mongoose.default.connection.readyState;
+      const stateMap: Record<number, string> = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting',
+      };
+      const userCount = await User.countDocuments();
+      res.json({
+        connectionState: stateMap[state] || 'unknown',
+        userCount,
+        mongoUri: config.mongodb.uri ? 'set' : 'NOT SET',
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Database connection error' });
+    }
+  });
+}
 
 // Error handler
 app.use(errorHandler);
