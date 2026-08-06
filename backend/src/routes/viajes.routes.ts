@@ -427,7 +427,7 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
       throw new AppError('No tienes permiso para agregar pasajeros a este viaje', 403);
     }
 
-    const { pasajeroId, montoPagado, metodoPago, asientos, estado, destino, tarifaId } = req.body;
+    const { pasajeroId, montoPagado, metodoPago, asientos, estado, destino, tarifaId, nombre, direccionRecogida, referenciaRecogida } = req.body;
 
     if (!metodoPago) {
       throw new AppError('metodoPago es requerido', 400);
@@ -463,6 +463,7 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
         $push: {
           pasajeros: {
             pasajeroId: pasajeroId || undefined,
+            nombre: nombre || undefined,
             montoPagado: montoNum,
             metodoPago,
             timestamp: new Date(),
@@ -470,6 +471,8 @@ router.post('/:id/pasajeros', authenticate, requireRole('super-admin', 'admin', 
             estado: estado || 'abordado',
             destino: destino || '',
             tarifaId: tarifaId || undefined,
+            direccionRecogida: direccionRecogida || undefined,
+            referenciaRecogida: referenciaRecogida || undefined,
           },
         },
         $inc: { ingresoTotal: montoNum },
