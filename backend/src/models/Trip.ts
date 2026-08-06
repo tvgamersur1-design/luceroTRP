@@ -15,6 +15,7 @@ export interface ITrip extends Document {
   fechaFin?: Date;
   pasajeros: {
     pasajeroId: mongoose.Types.ObjectId;
+    nombre?: string;
     montoPagado: number;
     metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta' | 'pendiente';
     timestamp: Date;
@@ -65,6 +66,7 @@ const TripSchema = new Schema<ITrip>(
     pasajeros: [
       {
         pasajeroId: { type: Schema.Types.ObjectId, ref: 'Passenger', required: true },
+        nombre: { type: String },
         montoPagado: { type: Number, required: true, min: 0 },
         metodoPago: { type: String, enum: ['efectivo', 'yape', 'plin', 'tarjeta', 'pendiente'], required: true },
         timestamp: { type: Date, default: Date.now },
