@@ -623,7 +623,6 @@ router.put('/:id/pasajeros/:pid/asiento', authenticate, requireRole('super-admin
     }
 
     pasajero.asientos = asientos;
-    pasajero.estado = 'abordado';
     await viaje.save();
 
     const viajePopulado = await Trip.findById(req.params.id)
