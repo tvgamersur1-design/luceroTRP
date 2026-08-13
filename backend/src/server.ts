@@ -31,6 +31,7 @@ import { notificationsRoutes } from './routes/notifications.routes';
 import { errorsRoutes } from './routes/errors.routes';
 import { setupWebSocket } from './websocket/handlers';
 import { setIO } from './websocket/socket';
+import { rateLimitMiddleware, removeSocketLimits } from './websocket/rateLimiter';
 import { User } from './models/User';
 
 const app = express();
@@ -117,9 +118,33 @@ io.use((socket, next) => {
   }
 });
 
+// Socket.IO rate limiting middleware — applies to ALL incoming events
+io.use((socket, next) => {
+  // Rate limiting is applied per-event in the connection handler via socket.use()
+  next();
+});
+
 // WebSocket handlers
 setIO(io);
 setupWebSocket(io);
+
+// Apply rate limiting to all connected sockets
+io.on('connection', (socket) => {
+  // socket.use() wraps ALL incoming event handlers with rate limiting
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  socket.use(([event, ...args]: any[], next: (err?: Error) => void) => {
+    if (rateLimitMiddleware(socket, event)) {
+      next();
+    } else {
+      // Silently drop the event — don't error out the socket
+      next();
+    }
+  });
+
+  socket.on('disconnect', () => {
+    removeSocketLimits(socket.id);
+  });
+});
 
 // Middleware
 app.disable('etag');

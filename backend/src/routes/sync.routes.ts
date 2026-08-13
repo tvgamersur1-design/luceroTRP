@@ -12,6 +12,8 @@ import { Driver } from '../models/Driver';
 import { Vehicle } from '../models/Vehicle';
 import { AuditLog } from '../models/AuditLog';
 import { getIO } from '../websocket/socket';
+import { logger } from '../utils/logger';
+import { trackAuditLogSuccess, trackAuditLogFailure } from '../utils/metrics';
 
 const router = Router();
 
@@ -250,7 +252,7 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
           const tablaKey = tabla.toLowerCase();
           const entityName = isLocalId ? mongoId : registroId;
 
-          if (tablaKey === 'trips' || tablaKey === 'viajes') {
+            if (tablaKey === 'trips' || tablaKey === 'viajes') {
             const tripData = await Trip.findById(entityName).populate('choferId').lean();
             if (tripData) {
               io.to('admins').emit('trip:updated', tripData);
@@ -264,16 +266,16 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
             }
           } else if (['routes', 'rutas'].includes(tablaKey)) {
             const doc = await Route.findById(entityName).lean();
-            if (doc) io.emit('route:created', doc);
+            if (doc) io.to('admins').to('ops').emit('route:created', doc);
           } else if (['fares', 'tarifas'].includes(tablaKey)) {
             const doc = await Fare.findById(entityName).lean();
-            if (doc) io.emit('fare:created', doc);
+            if (doc) io.to('admins').to('ops').emit('fare:created', doc);
           } else if (['vehicles', 'vehiculos'].includes(tablaKey)) {
             const doc = await Vehicle.findById(entityName).lean();
-            if (doc) io.emit('vehicle:created', doc);
+            if (doc) io.to('admins').to('ops').emit('vehicle:created', doc);
           } else if (['drivers', 'choferes'].includes(tablaKey)) {
             const doc = await Driver.findById(entityName).lean();
-            if (doc) io.emit('driver:created', doc);
+            if (doc) io.to('admins').emit('driver:created', doc);
           }
         } catch (socketErr) {
           // Socket emission failure is non-critical — don't block sync
@@ -281,13 +283,24 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
         }
 
         if (req.user) {
-          await AuditLog.create({
-            usuarioId: req.user._id,
-            accion: `sync_${accion}`,
-            entidad: modelEntry.name,
-            entidadId: isLocalId ? mongoId : registroId,
-            datosNuevos: datos,
-          });
+          try {
+            await AuditLog.create({
+              usuarioId: req.user._id,
+              accion: `sync_${accion}`,
+              entidad: modelEntry.name,
+              entidadId: isLocalId ? mongoId : registroId,
+              datosNuevos: datos,
+            });
+            trackAuditLogSuccess();
+          } catch (auditErr) {
+            trackAuditLogFailure(auditErr);
+            logger.error('[Sync/Audit] Failed to log sync action', {
+              tabla,
+              registroId,
+              accion,
+              error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+            });
+          }
         }
 
         results.push({
@@ -323,6 +336,34 @@ router.post('/batch', authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(error.statusCode).json({ message: error.message });
     }
     res.status(500).json({ message: 'Error al procesar batch de sincronización' });
+  }
+});
+
+// GET /api/sync/last-change - Obtener timestamp del último cambio en cualquier colección
+router.get('/last-change', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    let lastChange: Date | null = null;
+
+    for (const { model } of Object.values(SYNCABLE_MODELS)) {
+      const latest = await model.findOne()
+        .sort({ updatedAt: -1 })
+        .select('updatedAt')
+        .lean()
+        .exec();
+
+      if (latest) {
+        const updatedAt = (latest as any).updatedAt;
+        if (updatedAt && (!lastChange || updatedAt > lastChange)) {
+          lastChange = updatedAt;
+        }
+      }
+    }
+
+    res.json({
+      lastRemoteChange: lastChange ? lastChange.toISOString() : null,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener último cambio' });
   }
 });
 

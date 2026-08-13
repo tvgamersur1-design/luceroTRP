@@ -155,7 +155,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
     };
 
     const io = getIO();
-    io.emit('driver:created', userWithoutPassword);
+    io.to('admins').emit('driver:created', userWithoutPassword);
     io.to('admins').emit('user:created', {
       entity: 'user',
       action: 'created',
@@ -232,7 +232,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     };
 
     const io = getIO();
-    io.emit('driver:updated', updatedUser);
+    io.to('admins').emit('driver:updated', updatedUser);
     io.to('admins').emit('user:updated', {
       entity: 'user',
       action: 'updated',
@@ -271,7 +271,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     }
 
     const io = getIO();
-    io.emit('driver:deleted', req.params.id);
+    io.to('admins').emit('driver:deleted', req.params.id);
     io.to('admins').emit('user:deleted', {
       entity: 'user',
       action: 'deleted',

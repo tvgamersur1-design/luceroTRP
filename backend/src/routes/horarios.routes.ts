@@ -36,7 +36,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       adminId: req.user?._id || null,
     });
 
-    getIO().emit('horario:created', horario);
+    getIO().to('admins').to('ops').emit('horario:created', horario);
     res.status(201).json(horario);
   } catch (error) {
     if (error instanceof AppError) {
@@ -57,7 +57,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!horario) {
       throw new AppError('Horario no encontrado', 404);
     }
-    getIO().emit('horario:updated', horario);
+    getIO().to('admins').to('ops').emit('horario:updated', horario);
     res.json(horario);
   } catch (error) {
     if (error instanceof AppError) {
@@ -78,7 +78,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!horario) {
       throw new AppError('Horario no encontrado', 404);
     }
-    getIO().emit('horario:deleted', req.params.id);
+    getIO().to('admins').to('ops').emit('horario:deleted', req.params.id);
     res.json({ message: 'Horario desactivado exitosamente' });
   } catch (error) {
     if (error instanceof AppError) {

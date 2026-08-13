@@ -28,7 +28,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     // P1 FIX: Emit location update via socket for real-time map tracking
     try {
-      getIO().emit('location:update', {
+      getIO().to('admins').to('map-viewers').emit('location:update', {
         choferId: req.user?._id,
         lat,
         lng,

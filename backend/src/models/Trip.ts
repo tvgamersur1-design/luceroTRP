@@ -4,6 +4,7 @@ export interface ITrip extends Document {
   rutaId: mongoose.Types.ObjectId;
   vehiculoId: mongoose.Types.ObjectId;
   choferId: mongoose.Types.ObjectId;
+  choferUserId?: mongoose.Types.ObjectId;
   horaSalida: string;
   ayudantes: {
     choferId: mongoose.Types.ObjectId;
@@ -27,6 +28,9 @@ export interface ITrip extends Document {
     fechaBajada?: Date;
     direccionRecogida?: string;
     referenciaRecogida?: string;
+    version: number;
+    ultimaActualizacion: Date;
+    usuarioQueActualizo?: mongoose.Types.ObjectId;
   }[];
   ingresoTotal: number;
   egresos: {
@@ -48,6 +52,7 @@ const TripSchema = new Schema<ITrip>(
     rutaId: { type: Schema.Types.ObjectId, ref: 'Route', required: true },
     vehiculoId: { type: Schema.Types.ObjectId, ref: 'Vehicle', required: true },
     choferId: { type: Schema.Types.ObjectId, ref: 'Driver', required: true },
+    choferUserId: { type: Schema.Types.ObjectId, ref: 'User' },
     horaSalida: { type: String, default: '' },
     ayudantes: [
       {
@@ -78,6 +83,9 @@ const TripSchema = new Schema<ITrip>(
         fechaBajada: { type: Date },
         direccionRecogida: { type: String },
         referenciaRecogida: { type: String },
+        version: { type: Number, default: 1 },
+        ultimaActualizacion: { type: Date, default: Date.now },
+        usuarioQueActualizo: { type: Schema.Types.ObjectId, ref: 'User' },
       },
     ],
     ingresoTotal: { type: Number, default: 0 },

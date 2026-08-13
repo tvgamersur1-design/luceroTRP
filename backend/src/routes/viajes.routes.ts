@@ -3,9 +3,12 @@ import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { Trip } from '../models/Trip';
 import { Driver } from '../models/Driver';
 import { User } from '../models/User';
+import { AuditLog } from '../models/AuditLog';
 import { AppError } from '../middleware/errorHandler';
 import { getIO } from '../websocket/socket';
 import { sendPushToUser } from '../services/push';
+import { logger } from '../utils/logger';
+import { trackAuditLogSuccess, trackAuditLogFailure } from '../utils/metrics';
 
 const router = Router();
 
@@ -26,14 +29,22 @@ function emitTripUpdate(viajePopulated: any) {
 async function canModifyTrip(req: AuthRequest, viajeId: string): Promise<boolean> {
   if (req.user?.rol === 'super-admin' || req.user?.rol === 'admin') return true;
 
-  const viaje = await Trip.findById(viajeId).select('choferId ayudantes');
+  const viaje = await Trip.findById(viajeId).select('choferId choferUserId ayudantes');
   if (!viaje) return false;
 
   const userId = req.user?._id;
+
+  // Fast path: check denormalized choferUserId (no Driver lookup needed)
+  if (viaje.choferUserId?.toString() === userId) return true;
+
+  // Fallback: check choferId against userId directly
+  if (viaje.choferId?.toString() === userId) return true;
+
+  // Legacy fallback: look up Driver by userId (for trips created before choferUserId existed)
   const driver = await Driver.findOne({ userId });
   const driverId = driver?._id?.toString();
 
-  if (viaje.choferId?.toString() === userId || viaje.choferId?.toString() === driverId) return true;
+  if (viaje.choferId?.toString() === driverId) return true;
 
   return viaje.ayudantes?.some(a =>
     a.choferId?.toString() === userId || a.choferId?.toString() === driverId
@@ -192,6 +203,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
       rutaId,
       vehiculoId,
       choferId,
+      choferUserId: driverExists.userId,
       fechaInicio: new Date(fechaInicio),
       horaSalida: horaSalida || '',
       ayudantes: ayudantes || [],
@@ -665,7 +677,7 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
       throw new AppError('No tienes permiso para cambiar estados en este viaje', 403);
     }
 
-    const { estado } = req.body;
+    const { estado, expectedVersion } = req.body;
     const validStates = ['reservado', 'en_terminal', 'abordado', 'no_llegado', 'bajado', 'en_camino'];
 
     if (!estado || !validStates.includes(estado)) {
@@ -677,6 +689,24 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
 
     const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
+
+    // Concurrency control: validate version
+    if (expectedVersion !== undefined && pasajero.version !== expectedVersion) {
+      return res.status(409).json({
+        message: 'Conflicto: el pasajero fue modificado por otro usuario',
+        currentVersion: pasajero.version,
+        currentState: pasajero.estado,
+        currentPasajero: {
+          _id: (pasajero as any)._id,
+          pasajeroId: pasajero.pasajeroId,
+          estado: pasajero.estado,
+          version: pasajero.version,
+          ultimaActualizacion: pasajero.ultimaActualizacion,
+        },
+      });
+    }
+
+    const estadoAnterior = pasajero.estado;
 
     const TRANSICIONES: Record<string, string[]> = {
       reservado: ['en_terminal', 'en_camino', 'no_llegado'],
@@ -693,6 +723,10 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
     }
 
     pasajero.estado = estado;
+    pasajero.version = (pasajero.version || 1) + 1;
+    pasajero.ultimaActualizacion = new Date();
+    pasajero.usuarioQueActualizo = req.user?._id as any;
+
     // Liberar asiento si el pasajero no llego
     if (estado === 'no_llegado') {
       pasajero.asientos = [];
@@ -702,6 +736,38 @@ router.put('/:id/pasajeros/:pid/estado', authenticate, requireRole('super-admin'
       }
     }
     await viaje.save();
+
+    // Audit log
+    try {
+      await AuditLog.create({
+        usuarioId: req.user?._id,
+        accion: 'pasajero_estado_cambiado',
+        entidad: 'Trip',
+        entidadId: viaje._id,
+        datosAnteriores: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoAnterior,
+          version: (pasajero.version || 2) - 1,
+        },
+        datosNuevos: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoNuevo: estado,
+          version: pasajero.version,
+        },
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      trackAuditLogSuccess();
+    } catch (auditErr) {
+      trackAuditLogFailure(auditErr);
+      logger.error('[Audit] Failed to log passenger state change', {
+        viajeId: req.params.id,
+        pasajeroId: req.params.pid,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
 
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
@@ -805,9 +871,14 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
     const pasajero = viaje.pasajeros.find((p: any) => p._id?.toString() === req.params.pid || p.pasajeroId?.toString() === req.params.pid);
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
 
+    const estadoAnteriorBajar = pasajero.estado;
+
     pasajero.estado = 'bajado';
     pasajero.paradaBajada = paradaBajada || pasajero.destino || '';
     pasajero.fechaBajada = new Date();
+    pasajero.version = (pasajero.version || 1) + 1;
+    pasajero.ultimaActualizacion = new Date();
+    pasajero.usuarioQueActualizo = req.user?._id as any;
 
     if (metodoPago && metodoPago !== 'pendiente') {
       pasajero.metodoPago = metodoPago;
@@ -819,6 +890,42 @@ router.post('/:id/pasajeros/:pid/bajar', authenticate, requireRole('super-admin'
     }
 
     await viaje.save();
+
+    // Audit log
+    try {
+      await AuditLog.create({
+        usuarioId: req.user?._id,
+        accion: 'pasajero_bajado',
+        entidad: 'Trip',
+        entidadId: viaje._id,
+        datosAnteriores: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoAnterior: estadoAnteriorBajar,
+          paradaBajada: pasajero.paradaBajada,
+          montoPagado: pasajero.montoPagado,
+        },
+        datosNuevos: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoNuevo: 'bajado',
+          paradaBajada,
+          montoCobrado: montoCobrado ?? pasajero.montoPagado,
+          metodoPago: pasajero.metodoPago,
+          fechaBajada: pasajero.fechaBajada,
+        },
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      trackAuditLogSuccess();
+    } catch (auditErr) {
+      trackAuditLogFailure(auditErr);
+      logger.error('[Audit] Failed to log passenger dropoff', {
+        viajeId: req.params.id,
+        pasajeroId: req.params.pid,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
 
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
@@ -921,6 +1028,8 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
     );
     if (!pasajero) throw new AppError('Pasajero no encontrado en el viaje', 404);
 
+    const estadoAnteriorNL = pasajero.estado;
+
     // Restar del ingresoTotal si tenía monto
     if (pasajero.montoPagado > 0) {
       viaje.ingresoTotal = Math.max(0, viaje.ingresoTotal - pasajero.montoPagado);
@@ -930,7 +1039,40 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
     // Liberar asiento
     pasajero.asientos = [];
     pasajero.estado = 'no_llegado';
+    pasajero.version = (pasajero.version || 1) + 1;
+    pasajero.ultimaActualizacion = new Date();
+    pasajero.usuarioQueActualizo = req.user?._id as any;
     await viaje.save();
+
+    // Audit log
+    try {
+      await AuditLog.create({
+        usuarioId: req.user?._id,
+        accion: 'pasajero_no_llegado',
+        entidad: 'Trip',
+        entidadId: viaje._id,
+        datosAnteriores: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoAnterior: estadoAnteriorNL,
+        },
+        datosNuevos: {
+          pasajeroId: pasajero.pasajeroId?.toString(),
+          nombre: pasajero.nombre,
+          estadoNuevo: 'no_llegado',
+        },
+        ip: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      trackAuditLogSuccess();
+    } catch (auditErr) {
+      trackAuditLogFailure(auditErr);
+      logger.error('[Audit] Failed to log passenger no-llegado', {
+        viajeId: req.params.id,
+        pasajeroId: req.params.pid,
+        error: auditErr instanceof Error ? auditErr.message : String(auditErr),
+      });
+    }
 
     const viajePopulado = await Trip.findById(req.params.id)
       .populate('rutaId', 'nombre origen destino paradas tiempoEstimadoMin')
@@ -964,6 +1106,39 @@ router.put('/:id/pasajeros/:pid/no-llegado', authenticate, requireRole('super-ad
     }
     res.status(500).json({ message: 'Error al marcar no llegado' });
   }
+});
+
+// GET /api/viajes/:id/auditoria - Obtener historial de auditoría de un viaje
+router.get('/:id/auditoria', authenticate, requireRole('super-admin', 'admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { page = '1', limit = '50' } = req.query;
+    const pageNum = parseInt(page as string);
+    const limitNum = parseInt(limit as string);
+    const skip = (pageNum - 1) * limitNum;
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find({ entidadId: req.params.id })
+        .populate('usuarioId', 'nombre email rol')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      AuditLog.countDocuments({ entidadId: req.params.id }),
+    ]);
+
+    res.json({ logs, total, page: pageNum, pages: Math.ceil(total / limitNum) });
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener auditoría del viaje' });
+  }
+});
+
+// GET /api/viajes/debug-metrics - Diagnostic: audit log metrics
+router.get('/debug-metrics', authenticate, requireRole('super-admin'), async (req: AuthRequest, res: Response) => {
+  const { getAuditLogMetrics } = require('../utils/metrics');
+  res.json({
+    auditLog: getAuditLogMetrics(),
+    uptime: process.uptime(),
+    memoryUsage: process.memoryUsage(),
+  });
 });
 
 export { router as viajesRoutes };

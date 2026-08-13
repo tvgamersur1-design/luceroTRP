@@ -71,7 +71,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin'), async (req: 
 
     const tarifaPopulada = await Fare.findById(tarifa._id).populate('rutaId', 'nombre origen destino');
 
-    getIO().emit('fare:created', tarifaPopulada);
+    getIO().to('admins').to('ops').emit('fare:created', tarifaPopulada);
     res.status(201).json(tarifaPopulada);
   } catch (error) {
     if (error instanceof AppError) {
@@ -93,7 +93,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     if (!tarifa) {
       throw new AppError('Tarifa no encontrada', 404);
     }
-    getIO().emit('fare:updated', tarifa);
+    getIO().to('admins').to('ops').emit('fare:updated', tarifa);
     res.json(tarifa);
   } catch (error) {
     if (error instanceof AppError) {
@@ -114,7 +114,7 @@ router.delete('/:id', authenticate, requireRole('super-admin', 'admin'), async (
     if (!tarifa) {
       throw new AppError('Tarifa no encontrada', 404);
     }
-    getIO().emit('fare:deleted', req.params.id);
+    getIO().to('admins').to('ops').emit('fare:deleted', req.params.id);
     res.json({ message: 'Tarifa desactivada exitosamente', tarifa });
   } catch (error) {
     if (error instanceof AppError) {

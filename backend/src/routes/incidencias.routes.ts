@@ -84,7 +84,7 @@ router.post('/', authenticate, requireRole('super-admin', 'admin', 'chofer'), as
     // Emit socket event for real-time propagation
     try {
       const io = getIO();
-      io.emit('incidencia:created', incidencia);
+      io.to('admins').emit('incidencia:created', incidencia);
     } catch (e) {
       console.error('[Incidencias] Socket emission error:', e);
     }
@@ -113,7 +113,7 @@ router.put('/:id', authenticate, requireRole('super-admin', 'admin'), async (req
     // Emit socket event for real-time propagation
     try {
       const io = getIO();
-      io.emit('incidencia:updated', incidencia);
+      io.to('admins').emit('incidencia:updated', incidencia);
     } catch (e) {
       console.error('[Incidencias] Socket emission error:', e);
     }
@@ -152,7 +152,7 @@ router.put('/:id/resolver', authenticate, requireRole('super-admin', 'admin'), a
     // Emit socket event for real-time propagation
     try {
       const io = getIO();
-      io.emit('incidencia:resuelta', incidencia);
+      io.to('admins').emit('incidencia:resuelta', incidencia);
     } catch (e) {
       console.error('[Incidencias] Socket emission error:', e);
     }

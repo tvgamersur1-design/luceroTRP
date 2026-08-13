@@ -13,7 +13,8 @@ export function setupWebSocket(io: Server): void {
     // Auto-join role-based rooms
     if (user?.rol === 'admin' || user?.rol === 'super-admin') {
       socket.join('admins');
-      logger.info(`Socket ${socket.id} auto-joined 'admins' room (rol: ${user.rol})`);
+      socket.join('ops');
+      logger.info(`Socket ${socket.id} auto-joined 'admins' + 'ops' rooms (rol: ${user.rol})`);
     }
 
     // Auto-join driver room if user is a chofer
@@ -32,6 +33,16 @@ export function setupWebSocket(io: Server): void {
     socket.on('join:admin', () => {
       socket.join('admins');
       logger.info(`Socket ${socket.id} se unió a sala 'admins'`);
+    });
+
+    socket.on('join:ops', () => {
+      socket.join('ops');
+      logger.info(`Socket ${socket.id} se unió a sala 'ops'`);
+    });
+
+    socket.on('join:map-viewers', () => {
+      socket.join('map-viewers');
+      logger.info(`Socket ${socket.id} se unió a sala 'map-viewers'`);
     });
 
     socket.on('join:trip', (data: { viajeId: string }) => {
@@ -56,7 +67,7 @@ export function setupWebSocket(io: Server): void {
           .populate('rutaId', 'nombre origen destino');
 
         if (viaje) {
-          io.emit('trip:started', {
+          io.to('admins').to(`trip:${viaje._id}`).emit('trip:started', {
             viajeId: viaje._id,
             chofer: viaje.choferId,
             vehiculo: viaje.vehiculoId,
@@ -69,7 +80,7 @@ export function setupWebSocket(io: Server): void {
     });
 
     socket.on('trip:update', async (data: { viajeId: string; ingresoTotal: number; pasajeros: number }) => {
-      io.emit('trip:updated', data);
+      io.to('admins').to(`trip:${data.viajeId}`).emit('trip:updated', data);
     });
 
     socket.on('alert:create', async (data: { tipo: string; titulo: string; descripcion: string; nivel: string; choferId?: string; viajeId?: string }) => {
@@ -85,7 +96,7 @@ export function setupWebSocket(io: Server): void {
           atendida: false,
         });
 
-        io.emit('alert:created', alerta);
+        io.to('admins').emit('alert:created', alerta);
       } catch (error) {
         logger.error('Error creando alerta:', error);
       }
